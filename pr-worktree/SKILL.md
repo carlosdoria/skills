@@ -114,9 +114,7 @@ passe `--force` por iniciativa própria.
    explicitamente, e com a ferramenta que ele nomear.
 
 4. **Leia a saída do script** (caminho do worktree, branch, base,
-   merge-base) e ofereça o **relatório de revisão** (seção abaixo), que é
-   gerado pela skill `branch-diff-report`. Não pare em "worktree criado"
-   sem ao menos dizer o que mudou.
+   merge-base) e diga o que o PR muda. Não pare em "worktree criado".
 
 5. Avise que o worktree tem um `CLAUDE.md` na raiz explicando o contexto
    (HEAD detached, o que pode/não pode fazer ali). Se você mesmo estiver
@@ -128,6 +126,12 @@ passe `--force` por iniciativa própria.
    relatório.
 
 ## Fluxo: relatório de revisão
+
+**Ao terminar qualquer trabalho neste fluxo** (validar o PR, corrigir algo
+a pedido do usuário, rodar testes), **gere o relatório com a skill
+`branch-diff-report` sem esperar o usuário pedir**, antes de limpar o
+worktree. Se o trabalho mudou a branch (commits novos), gere o relatório
+sobre o estado final. Entregue o relatório e só então ofereça o cleanup.
 
 O relatório escrito não é responsabilidade desta skill. Use a skill
 **`branch-diff-report`**, que compara duas branches e escreve o Markdown.
@@ -150,6 +154,8 @@ valor sozinho.
 
 ## Fluxo: limpar depois da revisão
 
+0. Se o relatório final ainda não foi gerado nesta sessão, gere-o agora
+   (seção anterior); depois do cleanup o worktree deixa de existir.
 1. Confirme qual PR/worktree limpar. Se só um estiver ativo, use esse; se
    houver mais de um e o usuário não especificar, rode `git worktree list`,
    liste as opções e pergunte.

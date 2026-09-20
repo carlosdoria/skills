@@ -29,6 +29,13 @@ WT="$TMP/work/pr-review/pr-feat"
 prep()    { bash "$SCRIPTS/prepare-pr-validation.sh" feat --base main "$@"; }
 cleanup() { bash "$SCRIPTS/cleanup-pr-validation.sh" "$@"; }
 
+echo "prepare: base não detectável"
+git remote set-head origin -d >/dev/null
+OUT="$(PATH="/usr/bin:/bin" bash "$SCRIPTS/prepare-pr-validation.sh" feat 2>&1)"; RC=$?
+[[ $RC -ne 0 ]] && ok "falha sem base detectável" || nok "falha sem base detectável"
+grep -q "Informe explicitamente" <<<"$OUT" && ok "pede --base em vez de sair calado" || nok "pede --base em vez de sair calado"
+git remote set-head origin main >/dev/null
+
 echo "prepare"
 check "cria o worktree" prep
 check "registra o commit do PR (5º campo)" bash -c "awk -F'|' '{exit \$5 == \"\"}' .git/pr-validation/active-worktrees"
