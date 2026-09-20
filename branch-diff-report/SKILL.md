@@ -167,3 +167,6 @@ Cobertura no diff: **<n> de <n>** arquivos de lógica.
   imprime os fatos brutos do diff. Somente leitura. `--dir` aponta o
   repositório ou worktree onde operar (padrão: diretório atual);
   `--no-fetch` pula a atualização do remoto.
+- `tests/run-tests.sh` — testa o script de coleta em um repositório
+  temporário (seções, somente leitura, sem temporários). Rode
+  `bash tests/run-tests.sh` após alterá-lo.

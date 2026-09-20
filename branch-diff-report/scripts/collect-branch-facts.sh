@@ -107,13 +107,14 @@ g diff --shortstat "$MERGE_BASE" "$PR_HEAD"
 echo
 echo "=== ARQUIVOS (status<TAB>adicoes<TAB>remocoes<TAB>caminho) ==="
 # Junta name-status (A/M/D/R) com numstat (+/-) numa linha só por arquivo.
-g diff --name-status -M "$MERGE_BASE" "$PR_HEAD" > /tmp/.pr_status.$$ || true
-g diff --numstat   -M "$MERGE_BASE" "$PR_HEAD" > /tmp/.pr_numstat.$$ || true
+TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pr-facts.XXXXXX")"
+trap 'rm -rf "$TMP_DIR"' EXIT
+g diff --name-status -M "$MERGE_BASE" "$PR_HEAD" > "$TMP_DIR/status" || true
+g diff --numstat   -M "$MERGE_BASE" "$PR_HEAD" > "$TMP_DIR/numstat" || true
 awk -F'\t' '
   NR==FNR { st[$NF]=$1; next }
   { path=$NF; printf "%s\t%s\t%s\t%s\n", (st[path]?st[path]:"?"), $1, $2, path }
-' /tmp/.pr_status.$$ /tmp/.pr_numstat.$$
-rm -f /tmp/.pr_status.$$ /tmp/.pr_numstat.$$
+' "$TMP_DIR/status" "$TMP_DIR/numstat"
 
 echo
 echo "=== ARQUIVOS MAIS ALTERADOS (top 10 por linhas tocadas) ==="

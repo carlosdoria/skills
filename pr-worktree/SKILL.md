@@ -97,6 +97,10 @@ passe `--force` por iniciativa própria.
    ```bash
    bash scripts/prepare-pr-validation.sh <feature-branch> [--base <base-branch>]
    ```
+   - Se já existir um worktree para o PR, o script só o recria quando ele
+     não tiver edições do usuário além do PR. Com edições (ou sem como
+     verificar, em registros antigos), ele aborta e lista os arquivos;
+     `--force` recria mesmo assim e descarta essas edições.
    - Deixe o script detectar a branch base sozinho (via `gh`) sempre que
      possível; só passe `--base` se o script falhar em detectar ou o
      usuário indicar explicitamente uma base diferente.
@@ -138,7 +142,7 @@ bash <caminho-da-skill-branch-diff-report>/scripts/collect-branch-facts.sh \
 `--no-fetch` porque o `prepare` já atualizou as duas refs. A base e a
 branch estão na saída do `prepare` e no registro
 (`.git/pr-validation/active-worktrees`, no formato
-`branch|base|caminho|merge-base`).
+`branch|base|caminho|merge-base|pr-head`).
 
 Se a skill `branch-diff-report` não estiver disponível, diga isso ao
 usuário em vez de improvisar um relatório próprio — o worktree já entrega
@@ -157,7 +161,13 @@ valor sozinho.
    ```bash
    bash scripts/cleanup-pr-validation.sh --all
    ```
-3. **Nunca rode o cleanup a partir de dentro do próprio worktree que está
+3. O cleanup só remove caminhos registrados pelo `prepare`, recusa o
+   repositório principal e **preserva worktrees com edições do usuário**
+   (arquivos que diferem do commit do PR), saindo com erro e listando-os.
+   Ele nunca usa `rm -rf`: se o Git não conseguir remover, o script aborta.
+   Só use `--force` depois de mostrar ao usuário o que será perdido e ele
+   confirmar.
+4. **Nunca rode o cleanup a partir de dentro do próprio worktree que está
    sendo removido** — o comando apaga aquele diretório. Rode sempre a
    partir do repositório principal (ou de outro worktree).
 
@@ -171,8 +181,9 @@ valor sozinho.
 - Se um script falhar (branch não encontrada, base ambígua, worktree já
   existente e travado), reporte o erro ao usuário em vez de tentar
   contornar com comandos Git manuais.
-- Nunca rebaseie, force push, apague branch ou passe `--force` por
-  iniciativa própria. Essas recusas dos scripts são proteções, não
+- Nunca rebaseie, force push, apague branch ou passe `--force` (nos
+  scripts `prepare`, `cleanup` e `manage-worktree remove`) por iniciativa
+  própria. Essas recusas dos scripts são proteções, não
   obstáculos a driblar: leve a decisão ao usuário.
 
 ## Pré-requisitos
@@ -190,10 +201,14 @@ valor sozinho.
   `update` faz fast-forward e recusa divergência; `remove` protege trabalho
   não salvo e preserva a branch.
 
-- `scripts/prepare-pr-validation.sh <feature-branch> [--base <branch>]`
-  — cria/recria o worktree isolado, faz fetch, detecta a base, calcula o
+- `scripts/prepare-pr-validation.sh <feature-branch> [--base <branch>] [--force]`
+  — cria/recria (protegendo edições do usuário) o worktree isolado, faz fetch, detecta a base, calcula o
   merge-base, reseta (mixed) em HEAD detached, gera o `CLAUDE.md` de
   contexto na raiz do worktree e imprime o caminho. Não abre editor algum.
-- `scripts/cleanup-pr-validation.sh [<feature-branch> | --all]` — remove o
-  worktree, roda `git worktree prune` e limpa o registro interno
+- `scripts/cleanup-pr-validation.sh [<feature-branch> | --all] [--force]` —
+  valida o caminho, protege edições do usuário, remove o worktree, roda `git worktree prune` e limpa o registro interno
   (`.git/pr-validation/` no repositório principal).
+- `scripts/lib-pr-validation.sh` — funções compartilhadas (registro e
+  detecção de edições); é lido com `source`, não é chamado direto.
+- `tests/run-tests.sh` — testes de segurança do prepare/cleanup em repos
+  temporários. Rode `bash tests/run-tests.sh` após alterar os scripts.
