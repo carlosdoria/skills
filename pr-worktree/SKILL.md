@@ -47,6 +47,13 @@ que `--dir` diga outro lugar.
 Se o usuário disser algo como "abre uma pasta nova pra feature/abc saindo da
 irop-report", isso é `new feature/abc --from <caminho da irop-report>`.
 
+**Criar a branch não é commitar.** Quando o usuário pedir para criar uma
+branch (ou uma worktree), apenas crie-a. Não faça `git add`, `git commit`,
+`cherry-pick` nem `push`, e não leve arquivos alterados ou novos para a
+branch: eles ficam como estão no working tree, sem commit. Só commite e
+publique quando o usuário pedir isso explicitamente, e nesse caso faça só
+o que foi pedido. Em caso de dúvida sobre o que entra na branch, pergunte.
+
 ### Listar
 
 ```bash
@@ -114,9 +121,7 @@ passe `--force` por iniciativa própria.
    explicitamente, e com a ferramenta que ele nomear.
 
 4. **Leia a saída do script** (caminho do worktree, branch, base,
-   merge-base) e ofereça o **relatório de revisão** (seção abaixo), que é
-   gerado pela skill `branch-diff-report`. Não pare em "worktree criado"
-   sem ao menos dizer o que mudou.
+   merge-base) e diga o que o PR muda. Não pare em "worktree criado".
 
 5. Avise que o worktree tem um `CLAUDE.md` na raiz explicando o contexto
    (HEAD detached, o que pode/não pode fazer ali). Se você mesmo estiver
@@ -128,6 +133,12 @@ passe `--force` por iniciativa própria.
    relatório.
 
 ## Fluxo: relatório de revisão
+
+**Ao terminar qualquer trabalho neste fluxo** (validar o PR, corrigir algo
+a pedido do usuário, rodar testes), **gere o relatório com a skill
+`branch-diff-report` sem esperar o usuário pedir**, antes de limpar o
+worktree. Se o trabalho mudou a branch (commits novos), gere o relatório
+sobre o estado final. Entregue o relatório e só então ofereça o cleanup.
 
 O relatório escrito não é responsabilidade desta skill. Use a skill
 **`branch-diff-report`**, que compara duas branches e escreve o Markdown.
@@ -150,6 +161,8 @@ valor sozinho.
 
 ## Fluxo: limpar depois da revisão
 
+0. Se o relatório final ainda não foi gerado nesta sessão, gere-o agora
+   (seção anterior); depois do cleanup o worktree deixa de existir.
 1. Confirme qual PR/worktree limpar. Se só um estiver ativo, use esse; se
    houver mais de um e o usuário não especificar, rode `git worktree list`,
    liste as opções e pergunte.
@@ -173,6 +186,8 @@ valor sozinho.
 
 ## Regras de segurança (nunca violar)
 
+- Nunca commite nem faça push de arquivos ao criar uma branch ou worktree,
+  a menos que o usuário peça isso explicitamente.
 - Nunca faça `git commit`, `git push`, ou `git checkout <branch>` dentro do
   worktree de validação — o HEAD detached e o estado "resetado" são
   propositais, não um bug a corrigir.

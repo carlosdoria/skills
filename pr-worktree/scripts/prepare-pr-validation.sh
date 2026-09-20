@@ -70,7 +70,7 @@ if [[ -z "$BASE_BRANCH" ]]; then
   fi
   if [[ -z "$BASE_BRANCH" ]]; then
     # fallback: branch padrão do remoto (main/master/develop, o que estiver configurado)
-    BASE_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##')"
+    BASE_BRANCH="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
   fi
   if [[ -z "$BASE_BRANCH" ]]; then
     echo "Não foi possível detectar a branch base automaticamente." >&2
