@@ -21,8 +21,16 @@ Abra uma sessão nova do Claude Code para que as skills sejam carregadas.
 
 Requisitos: `git`. O `gh` (GitHub CLI) é opcional e serve para descobrir a base de um PR.
 
+## Testes
+
+Cada skill tem um `tests/run-tests.sh` que usa repositórios temporários e não toca em nada fora deles:
+
+```bash
+bash pr-worktree/tests/run-tests.sh
+bash branch-diff-report/tests/run-tests.sh
+```
+
 ## Melhorias conhecidas
 
-- `prepare-pr-validation.sh` e `cleanup-pr-validation.sh` ainda usam `git worktree remove --force` internamente. Falta confirmar que a checagem de edições locais cobre todos os casos antes desse comando.
-- Os testes em `tests/run-tests.sh` de cada skill ainda não foram executados nem revisados quanto à cobertura de `manage-worktree.sh`.
-- Os scripts não têm permissão de execução; funcionam porque as skills os chamam com `bash scripts/...`.
+- `manage-worktree.sh` ainda não tem testes.
+- Registros antigos de `pr-validation`, sem o commit do PR, exigem `--force` no `prepare` e no `cleanup`, e não há teste para esse caso.
