@@ -47,6 +47,13 @@ que `--dir` diga outro lugar.
 Se o usuário disser algo como "abre uma pasta nova pra feature/abc saindo da
 irop-report", isso é `new feature/abc --from <caminho da irop-report>`.
 
+**Criar a branch não é commitar.** Quando o usuário pedir para criar uma
+branch (ou uma worktree), apenas crie-a. Não faça `git add`, `git commit`,
+`cherry-pick` nem `push`, e não leve arquivos alterados ou novos para a
+branch: eles ficam como estão no working tree, sem commit. Só commite e
+publique quando o usuário pedir isso explicitamente, e nesse caso faça só
+o que foi pedido. Em caso de dúvida sobre o que entra na branch, pergunte.
+
 ### Listar
 
 ```bash
@@ -179,6 +186,8 @@ valor sozinho.
 
 ## Regras de segurança (nunca violar)
 
+- Nunca commite nem faça push de arquivos ao criar uma branch ou worktree,
+  a menos que o usuário peça isso explicitamente.
 - Nunca faça `git commit`, `git push`, ou `git checkout <branch>` dentro do
   worktree de validação — o HEAD detached e o estado "resetado" são
   propositais, não um bug a corrigir.
