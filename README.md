@@ -1,36 +1,47 @@
-# skills
+# Claude Code Skills
 
-Skills do Claude Code para trabalhar com branches, PRs e worktrees Git.
+Skills para Claude Code.
 
-## Skills
+## Instalação remota
 
-| Skill | O que faz |
-|---|---|
-| [branch-diff-report](branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão em Markdown: o que mudou, áreas afetadas, pontos de atenção por risco, arquivos sem teste e ordem sugerida de revisão. Somente leitura. |
-| [pr-worktree](pr-worktree/SKILL.md) | Cria, lista, atualiza e remove worktrees Git, e prepara worktrees descartáveis para revisar e testar um PR sem tocar na sua branch. Delega o relatório escrito para `branch-diff-report`. |
-
-## Instalação
-
-Copie as pastas das skills para o diretório de skills do usuário:
+Depois de publicar este repositório no GitHub, o usuário poderá instalar as skills com:
 
 ```bash
-cp -R branch-diff-report pr-worktree ~/.claude/skills/
+curl -fsSL https://raw.githubusercontent.com/SEU-USUARIO/skills/main/install.sh | bash
 ```
 
-Abra uma sessão nova do Claude Code para que as skills sejam carregadas.
+> Substitua `SEU-USUARIO` pelo seu usuário do GitHub.
 
-Requisitos: `git`. O `gh` (GitHub CLI) é opcional e serve para descobrir a base de um PR.
+O instalador copia todas as skills para:
 
-## Testes
+```text
+~/.claude/skills/
+```
 
-Cada skill tem um `tests/run-tests.sh` que usa repositórios temporários e não toca em nada fora deles:
+Depois, abra uma nova sessão do Claude Code.
+
+## Instalação local
+
+Também é possível executar diretamente:
 
 ```bash
-bash pr-worktree/tests/run-tests.sh
-bash branch-diff-report/tests/run-tests.sh
+./install.sh
 ```
 
-## Melhorias conhecidas
+## Estrutura
 
-- `manage-worktree.sh` ainda não tem testes.
-- Registros antigos de `pr-validation`, sem o commit do PR, exigem `--force` no `prepare` e no `cleanup`, e não há teste para esse caso.
+```text
+skills/
+├── branch-diff-report/
+│   └── SKILL.md
+└── pr-worktree/
+    └── SKILL.md
+```
+
+## Requisitos
+
+- Bash
+- Git
+- Claude Code
+
+O `gh` pode ser usado pelas skills que precisarem consultar PRs do GitHub.
