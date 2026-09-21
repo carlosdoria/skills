@@ -11,29 +11,21 @@ Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 
 ## Instalação
 
-### Via curl
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/carlosdoria/skills/main/install.sh | bash
 ```
 
-### Local
-
-Clone o repositório e execute o instalador:
+Alternativa clonando o repositório primeiro:
 
 ```bash
-git clone git@github.com:carlosdoria/skills.git
-cd skills
-./install.sh
+git clone git@github.com:carlosdoria/skills.git && cd skills && ./install.sh
 ```
 
-O instalador copia cada skill para:
+### Instalação manual
 
-```text
-~/.claude/skills/
-```
+Baixe o repositório e copie a pasta de cada skill para `~/.claude/skills/`.
 
-Abra uma nova sessão do Claude Code para que as skills sejam carregadas.
+Abra uma nova sessão do Claude Code para que sejam carregadas.
 
 ## Estrutura
 
