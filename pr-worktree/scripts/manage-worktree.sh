@@ -9,12 +9,17 @@
 #       Nenhuma branch fica com checkout na raiz do projeto — esse é o
 #       padrão para todo repositório novo gerenciado por esta skill.
 #
-#   bootstrap-bare [<caminho>]
+#   bootstrap-bare [<caminho>] [--confirmo-riscos]
 #       Converte um repositório normal (não-bare) já existente, com a
 #       working tree na raiz, para o mesmo formato bare + worktree por
 #       branch. Recusa se a árvore não estiver limpa (tracked ou
 #       untracked). A branch atualmente com checkout na raiz (padrão:
 #       repositório do diretório atual) vira uma worktree irmã.
+#       Apaga também qualquer arquivo ignorado pelo .gitignore que estiver
+#       solto na raiz (a checagem de árvore limpa não cobre esses
+#       arquivos). Por isso só roda com --confirmo-riscos: sem a flag,
+#       imprime o aviso e sai sem mexer em nada. Mostre o aviso ao usuário
+#       e só use a flag depois que ele confirmar de forma explícita.
 #
 #   new <nova-branch> [--from <base>] [--dir <caminho>]
 #       Cria uma worktree nova, com branch nova, a partir de uma base
@@ -41,7 +46,7 @@
 set -euo pipefail
 
 usage() {
-  sed -n '3,39p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '3,44p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 1
 }
 
@@ -159,7 +164,16 @@ case "$SUBCMD" in
     ;;
 
   bootstrap-bare)
-    ALVO="${1:-.}"
+    ALVO="."
+    CONFIRMOU_RISCOS=0
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --confirmo-riscos) CONFIRMOU_RISCOS=1; shift ;;
+        --*) echo "Opção desconhecida: $1" >&2; usage ;;
+        *) ALVO="$1"; shift ;;
+      esac
+    done
+
     REPO_ROOT="$(git -C "$ALVO" rev-parse --show-toplevel 2>/dev/null || true)"
     [[ -n "$REPO_ROOT" ]] || { echo "'$ALVO' não é um repositório Git." >&2; exit 1; }
 
@@ -174,6 +188,32 @@ case "$SUBCMD" in
       echo "'$REPO_ROOT' tem alterações não salvas (tracked ou untracked):" >&2
       git -C "$REPO_ROOT" status --short >&2
       echo "Faça commit, stash ou limpe antes de converter." >&2
+      exit 1
+    fi
+
+    # A checagem de árvore limpa acima não olha para arquivos ignorados
+    # pelo .gitignore — mas a limpeza abaixo apaga TUDO que sobrar solto na
+    # raiz, ignorado ou não. Por isso exige confirmação explícita: sem
+    # --confirmo-riscos, só avisa e sai, sem mexer em nada.
+    if [[ "$CONFIRMOU_RISCOS" -ne 1 ]]; then
+      IGNORADOS="$(git -C "$REPO_ROOT" status --porcelain --ignored | awk '/^!! /{print substr($0,4)}')"
+      {
+        echo "==> ATENÇÃO: 'bootstrap-bare' reestrutura a raiz de '$REPO_ROOT' e isso NÃO é reversível."
+        echo
+        echo "    Depois de mover o .git para .bare, todo arquivo ou pasta que sobrar"
+        echo "    solto na raiz é apagado — inclusive o que está no .gitignore (.env,"
+        echo "    node_modules/, build/, chaves, credenciais locais etc). A checagem de"
+        echo "    'árvore limpa' feita antes NÃO cobre esses arquivos: eles são"
+        echo "    removidos do disco sem backup, mesmo a árvore estando limpa."
+        echo
+        if [[ -n "$IGNORADOS" ]]; then
+          echo "    Arquivos/pastas ignorados encontrados na raiz agora (serão apagados):"
+          while IFS= read -r item; do echo "      $item"; done <<<"$IGNORADOS"
+          echo
+        fi
+        echo "    Confirme com o usuário que ele está ciente desse risco e quer seguir"
+        echo "    mesmo assim. Só então rode de novo com --confirmo-riscos."
+      } >&2
       exit 1
     fi
 

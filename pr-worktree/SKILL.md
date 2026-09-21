@@ -43,16 +43,20 @@ principal, seguem a mesma regra.
 
 - **Projeto já clonado do jeito antigo (checkout direto na raiz):**
   ```bash
-  bash scripts/manage-worktree.sh bootstrap-bare [<caminho>]
+  bash scripts/manage-worktree.sh bootstrap-bare [<caminho>] [--confirmo-riscos]
   ```
   Converte em lugar, criando `.bare` e uma worktree para a branch que
   estava com checkout. **Recusa se a árvore não estiver limpa** (tracked ou
   untracked) — resolva isso com o usuário antes, nunca descarte nada por
   conta própria. Depois de converter, os arquivos soltos que existiam na
-  raiz são removidos (viram redundantes: a raiz deixou de ter working tree
-  própria; o conteúdo real continua na worktree nova). Por ser uma
-  reestruturação que mexe na raiz do projeto, **confirme com o usuário
-  antes de rodar**, mesmo com a árvore limpa.
+  raiz são removidos — inclusive os que estão no `.gitignore` (`.env`,
+  `node_modules/`, build local, chaves...), que a checagem de árvore limpa
+  **não** cobre. Por isso o comando exige `--confirmo-riscos`: sem a flag,
+  ele só mostra o aviso e a lista dos arquivos ignorados que seriam
+  apagados, e sai sem mexer em nada. **Mostre esse aviso ao usuário palavra
+  por palavra e só rode de novo com `--confirmo-riscos` depois que ele
+  confirmar explicitamente que quer seguir mesmo assim** — nunca adicione a
+  flag por conta própria, mesmo com a árvore limpa.
 
 - **Detectar se um projeto já é bare:** `git rev-parse --is-bare-repository`
   no caminho, ou olhe a saída de `list` — ela tem uma seção separada
@@ -234,14 +238,17 @@ valor sozinho.
 - Se um script falhar (branch não encontrada, base ambígua, worktree já
   existente e travado), reporte o erro ao usuário em vez de tentar
   contornar com comandos Git manuais.
-- Nunca rebaseie, force push, apague branch ou passe `--force` (nos
-  scripts `prepare`, `cleanup` e `manage-worktree remove`) por iniciativa
-  própria. Essas recusas dos scripts são proteções, não
-  obstáculos a driblar: leve a decisão ao usuário.
+- Nunca rebaseie, force push, apague branch ou passe `--force` ou
+  `--confirmo-riscos` (nos scripts `prepare`, `cleanup`, `manage-worktree
+  remove` e `manage-worktree bootstrap-bare`) por iniciativa própria.
+  Essas recusas dos scripts são proteções, não obstáculos a driblar: leve
+  a decisão ao usuário.
 - `bootstrap-bare` reestrutura a raiz do projeto (move `.git`, apaga os
-  arquivos soltos que sobraram lá). Só rode depois de confirmar com o
-  usuário, mesmo com a árvore limpa — não é uma operação a fazer por
-  conta própria dentro de outro fluxo.
+  arquivos soltos que sobraram lá, incluindo os ignorados pelo
+  `.gitignore`). Rodar sem `--confirmo-riscos` só mostra o aviso e a lista
+  do que seria apagado — use essa saída para explicar o risco ao usuário
+  palavra por palavra e só passe a flag depois que ele confirmar
+  explicitamente, mesmo com a árvore limpa.
 
 ## Pré-requisitos
 
