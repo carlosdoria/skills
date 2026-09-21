@@ -1,41 +1,52 @@
 # Claude Code Skills
 
-Skills para Claude Code.
+Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 
-## Instalação remota
+## Skills disponíveis
 
-Depois de publicar este repositório no GitHub, o usuário poderá instalar as skills com:
+| Skill | Descrição |
+| --- | --- |
+| [`branch-diff-report`](branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão a partir do diff. |
+| [`pr-worktree`](pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
+
+## Instalação
+
+### Via curl
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SEU-USUARIO/skills/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/carlosdoria/skills/main/install.sh | bash
 ```
 
-> Substitua `SEU-USUARIO` pelo seu usuário do GitHub.
+### Local
 
-O instalador copia todas as skills para:
+Clone o repositório e execute o instalador:
+
+```bash
+git clone git@github.com:carlosdoria/skills.git
+cd skills
+./install.sh
+```
+
+O instalador copia cada skill para:
 
 ```text
 ~/.claude/skills/
 ```
 
-Depois, abra uma nova sessão do Claude Code.
-
-## Instalação local
-
-Também é possível executar diretamente:
-
-```bash
-./install.sh
-```
+Abra uma nova sessão do Claude Code para que as skills sejam carregadas.
 
 ## Estrutura
 
 ```text
 skills/
 ├── branch-diff-report/
-│   └── SKILL.md
+│   ├── SKILL.md
+│   ├── scripts/
+│   └── tests/
 └── pr-worktree/
-    └── SKILL.md
+    ├── SKILL.md
+    ├── scripts/
+    └── tests/
 ```
 
 ## Requisitos
@@ -44,4 +55,11 @@ skills/
 - Git
 - Claude Code
 
-O `gh` pode ser usado pelas skills que precisarem consultar PRs do GitHub.
+O `gh` (GitHub CLI) é usado pelas skills que precisam consultar PRs no GitHub.
+
+## Melhorias futuras
+
+- [ ] Corrigir `install.sh`, que procura as skills em `skills/*` mas elas estão na raiz do repositório.
+- [ ] Adicionar testes automatizados em CI (GitHub Actions) para rodar `tests/run-tests.sh` de cada skill.
+- [ ] Documentar processo de contribuição (`CONTRIBUTING.md`) para novas skills.
+- [ ] Adicionar versionamento/changelog das skills.

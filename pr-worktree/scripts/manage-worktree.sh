@@ -2,6 +2,20 @@
 #
 # manage-worktree <subcomando> [args]
 #
+#   clone <url> [--dir <destino>] [--branch <nome>]
+#       Clona um repositório remoto direto no formato bare + worktree por
+#       branch: <destino>/.bare (bare) e <destino>/<branch-padrão> (a
+#       primeira worktree, com a branch padrão do remoto já dentro dela).
+#       Nenhuma branch fica com checkout na raiz do projeto — esse é o
+#       padrão para todo repositório novo gerenciado por esta skill.
+#
+#   bootstrap-bare [<caminho>]
+#       Converte um repositório normal (não-bare) já existente, com a
+#       working tree na raiz, para o mesmo formato bare + worktree por
+#       branch. Recusa se a árvore não estiver limpa (tracked ou
+#       untracked). A branch atualmente com checkout na raiz (padrão:
+#       repositório do diretório atual) vira uma worktree irmã.
+#
 #   new <nova-branch> [--from <base>] [--dir <caminho>]
 #       Cria uma worktree nova, com branch nova, a partir de uma base
 #       (outra worktree ou uma branch). A base é atualizada por
@@ -20,24 +34,37 @@
 #       apagar a branch também. Recusa se houver trabalho não salvo.
 #
 # <alvo> pode ser o caminho da worktree ou o nome da branch.
-# Worktrees ficam em uma pasta irmã à raiz do repositório principal.
+# Worktrees ficam em uma pasta irmã à raiz do repositório principal — que,
+# no padrão bare (clone/bootstrap-bare), é a própria pasta do projeto, já
+# que ela não tem mais working tree própria.
 #
 set -euo pipefail
 
 usage() {
-  sed -n '3,22p' "$0" | sed 's/^# \{0,1\}//' >&2
+  sed -n '3,39p' "$0" | sed 's/^# \{0,1\}//' >&2
   exit 1
 }
 
 [[ $# -ge 1 ]] || usage
 SUBCMD="$1"; shift
 
-GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
-PR_STATE_FILE="$GIT_COMMON_DIR/pr-validation/active-worktrees"
+# clone e bootstrap-bare ainda não têm um repositório Git para inspecionar
+# neste ponto (clone) ou operam sobre um caminho arbitrário (bootstrap-bare
+# recebe o caminho como argumento), então saem antes do bloco que assume um
+# repositório já resolvido no diretório atual.
+case "$SUBCMD" in
+  clone|bootstrap-bare) : ;;
+  *)
+    GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+    PR_STATE_FILE="$GIT_COMMON_DIR/pr-validation/active-worktrees"
 
-# Raiz "canônica" do projeto: o primeiro worktree da lista do Git.
-MAIN_ROOT="$(git worktree list --porcelain | awk '/^worktree /{print substr($0,10); exit}')"
-SIBLING_ROOT="$(dirname "$MAIN_ROOT")"
+    # Raiz "canônica" do projeto: o primeiro worktree da lista do Git — no
+    # padrão bare, é a própria entrada bare, e suas worktrees-irmãs (main
+    # incluída) nascem dentro da pasta do projeto, exatamente como se quer.
+    MAIN_ROOT="$(git worktree list --porcelain | awk '/^worktree /{print substr($0,10); exit}')"
+    SIBLING_ROOT="$(dirname "$MAIN_ROOT")"
+    ;;
+esac
 
 # Uma worktree é de validação de PR se estiver registrada pelo prepare.
 eh_worktree_de_pr() {
@@ -69,11 +96,122 @@ branch_da_worktree() {
   git -C "$1" symbolic-ref --quiet --short HEAD 2>/dev/null || echo "(detached)"
 }
 
+# Caminhos das entradas "bare" (sem working tree própria) na lista de
+# worktrees — no padrão bare, a primeira entrada é sempre uma dessas, e não
+# deve ser tratada como uma worktree de desenvolvimento comum.
+worktrees_bare() {
+  git worktree list --porcelain | awk '
+    /^worktree /{ p=substr($0,10) }
+    /^bare$/{ print p }
+  '
+}
+
 esta_suja() {
   [[ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]]
 }
 
 case "$SUBCMD" in
+
+  clone)
+    [[ $# -ge 1 ]] || usage
+    URL="$1"; shift
+    DEST=""
+    BR=""
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --dir)    DEST="${2:?--dir precisa de um valor}"; shift 2 ;;
+        --branch) BR="${2:?--branch precisa de um valor}"; shift 2 ;;
+        *) echo "Opção desconhecida: $1" >&2; usage ;;
+      esac
+    done
+
+    if [[ -z "$DEST" ]]; then
+      DEST="$(basename "$URL" .git)"
+    fi
+    [[ ! -e "$DEST" ]] || { echo "Já existe algo em '$DEST'. Abortando." >&2; exit 1; }
+
+    echo "==> Clonando '$URL' (bare) em '$DEST/.bare'..."
+    mkdir -p "$DEST"
+    git clone --bare "$URL" "$DEST/.bare"
+    echo "gitdir: ./.bare" > "$DEST/.git"
+    # Sem isso, um clone --bare não guarda refs remotas para fetches futuros
+    # nem o ponteiro refs/remotes/origin/HEAD (usado abaixo para achar a
+    # branch padrão).
+    git --git-dir="$DEST/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+    git --git-dir="$DEST/.bare" fetch origin --quiet
+    git --git-dir="$DEST/.bare" remote set-head origin --auto >/dev/null 2>&1 || true
+
+    if [[ -z "$BR" ]]; then
+      BR="$(git --git-dir="$DEST/.bare" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null | sed 's#^origin/##' || true)"
+      [[ -n "$BR" ]] || { echo "Não consegui detectar a branch padrão do remoto. Use --branch <nome>." >&2; exit 1; }
+    fi
+
+    echo "==> Criando worktree '$BR' (primeira do projeto)..."
+    git -C "$DEST" worktree add "$BR" "$BR"
+
+    echo
+    echo "==> Pronto. Repositório clonado no padrão bare + worktree por branch."
+    echo "    Repositório (bare): $DEST/.bare"
+    echo "    Worktree:           $DEST/$BR"
+    echo
+    echo "    Próximas branches nascem como pastas irmãs dentro de '$DEST/'."
+    echo "    Para entrar: cd \"$DEST/$BR\""
+    ;;
+
+  bootstrap-bare)
+    ALVO="${1:-.}"
+    REPO_ROOT="$(git -C "$ALVO" rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -n "$REPO_ROOT" ]] || { echo "'$ALVO' não é um repositório Git." >&2; exit 1; }
+
+    if [[ "$(git -C "$REPO_ROOT" rev-parse --is-bare-repository)" == "true" ]]; then
+      echo "'$REPO_ROOT' já é um repositório bare." >&2; exit 1
+    fi
+    if [[ "$(git -C "$REPO_ROOT" worktree list --porcelain | grep -c '^worktree ')" -gt 1 ]]; then
+      echo "'$REPO_ROOT' já tem outras worktrees; converta manualmente ou peça ajuda." >&2
+      exit 1
+    fi
+    if [[ -n "$(git -C "$REPO_ROOT" status --porcelain --ignored=no 2>/dev/null)" ]]; then
+      echo "'$REPO_ROOT' tem alterações não salvas (tracked ou untracked):" >&2
+      git -C "$REPO_ROOT" status --short >&2
+      echo "Faça commit, stash ou limpe antes de converter." >&2
+      exit 1
+    fi
+
+    BR="$(git -C "$REPO_ROOT" symbolic-ref --quiet --short HEAD 2>/dev/null || true)"
+    [[ -n "$BR" ]] || { echo "'$REPO_ROOT' está em HEAD detached; não dá para converter assim." >&2; exit 1; }
+
+    SLUG="$(printf '%s' "$BR" | tr '/' '-' | tr -c 'a-zA-Z0-9._-' '-')"
+    WORKTREE_PATH="$REPO_ROOT/$SLUG"
+    [[ ! -e "$WORKTREE_PATH" ]] || { echo "Já existe algo em '$WORKTREE_PATH'. Abortando." >&2; exit 1; }
+
+    echo "==> Convertendo '$REPO_ROOT' para bare + worktree por branch..."
+    mv "$REPO_ROOT/.git" "$REPO_ROOT/.bare"
+    git --git-dir="$REPO_ROOT/.bare" config core.bare true
+    echo "gitdir: ./.bare" > "$REPO_ROOT/.git"
+
+    # Os arquivos que estavam soltos na raiz (a antiga working tree) ficam
+    # redundantes: a raiz não tem mais working tree própria. São removidos
+    # só depois de o `.git` (que já era ponteiro) ser recriado — o que
+    # importa (.bare) já está a salvo fora da raiz "solta".
+    shopt -s dotglob nullglob
+    for item in "$REPO_ROOT"/*; do
+      base="$(basename "$item")"
+      [[ "$base" == ".bare" || "$base" == ".git" ]] && continue
+      rm -rf "$item"
+    done
+    shopt -u dotglob nullglob
+
+    echo "==> Criando worktree '$BR'..."
+    git -C "$REPO_ROOT" worktree add "$SLUG" "$BR"
+
+    echo
+    echo "==> Pronto. '$REPO_ROOT' agora é bare + worktree por branch."
+    echo "    Repositório (bare): $REPO_ROOT/.bare"
+    echo "    Worktree:           $WORKTREE_PATH"
+    echo
+    echo "    Próximas branches nascem como pastas irmãs aqui dentro."
+    echo "    Para entrar: cd \"$WORKTREE_PATH\""
+    ;;
 
   new)
     [[ $# -ge 1 ]] || usage
@@ -146,12 +284,20 @@ case "$SUBCMD" in
     ;;
 
   list)
+    BARE_PATHS="$(worktrees_bare)"
+    if [[ -n "$BARE_PATHS" ]]; then
+      echo "=== REPOSITÓRIO (bare, sem working tree própria) ==="
+      printf '%s\n' "$BARE_PATHS" | sed 's/^/  /'
+      echo
+    fi
+
     echo "=== WORKTREES DE DESENVOLVIMENTO ==="
     encontrou_dev=0
     echo "=== VALIDAÇÃO DE PR (descartáveis) ==="  >/dev/null  # ordem tratada abaixo
     DEV_OUT=""; PR_OUT=""
     while IFS= read -r path; do
       [[ -n "$path" ]] || continue
+      grep -qxF "$path" <<<"$BARE_PATHS" && continue  # entrada bare: já listada acima
       branch="$(branch_da_worktree "$path")"
       sujo=""; esta_suja "$path" && sujo="  [alterações não salvas]"
       linha="  ${branch}	${path}${sujo}"
@@ -173,7 +319,12 @@ case "$SUBCMD" in
     ;;
 
   update)
-    ALVO="${1:-$(git rev-parse --show-toplevel)}"
+    if [[ $# -ge 1 ]]; then
+      ALVO="$1"
+    else
+      ALVO="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+      [[ -n "$ALVO" ]] || { echo "Rodando da raiz bare (sem working tree própria); informe a worktree: update <alvo>." >&2; exit 1; }
+    fi
     WT="$(resolver_worktree "$ALVO" || true)"
     [[ -n "$WT" ]] || { echo "Worktree não encontrada para '$ALVO'." >&2; git worktree list >&2; exit 1; }
 
@@ -223,8 +374,10 @@ case "$SUBCMD" in
     WT="$(resolver_worktree "$ALVO" || true)"
     [[ -n "$WT" ]] || { echo "Worktree não encontrada para '$ALVO'." >&2; git worktree list >&2; exit 1; }
 
-    ATUAL="$(git rev-parse --show-toplevel)"
-    [[ "$WT" != "$ATUAL" ]] || {
+    # Sem working tree própria (rodando da raiz bare, por exemplo), não há
+    # "cwd dentro de uma worktree" para comparar — segue sem essa checagem.
+    ATUAL="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+    [[ -z "$ATUAL" ]] || [[ "$WT" != "$ATUAL" ]] || {
       echo "Você está dentro de '$WT'. Saia dela antes de removê-la." >&2; exit 1; }
     [[ "$WT" != "$MAIN_ROOT" ]] || {
       echo "'$WT' é a worktree principal do repositório; não pode ser removida." >&2; exit 1; }
