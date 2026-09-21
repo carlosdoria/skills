@@ -1,6 +1,6 @@
 ---
 name: pr-worktree
-description: Gerencia worktrees Git de um projeto — cria uma worktree nova com branch nova a partir de uma base, lista as ativas, atualiza por fast-forward e remove com segurança — e também prepara e limpa worktrees descartáveis para revisar, rodar e testar um Pull Request sem tocar na branch original nem no diretório de trabalho do usuário. Funciona em qualquer repositório Git, com ou sem setup prévio de worktrees. Use sempre que o usuário pedir para criar, abrir, listar, atualizar ou remover uma worktree ou uma pasta de trabalho para uma branch, pedir uma worktree a partir de outra ou baseada em outra, ou pedir para revisar, validar, testar ou rodar um PR localmente e depois finalizar e limpar essa validação, mesmo que não use a palavra worktree nem o nome exato do comando. Para o relatório escrito da revisão, esta skill delega para a skill branch-diff-report.
+description: Gerencia worktrees Git de um projeto no padrão bare + worktree por branch (nenhuma branch, nem a main, fica com checkout direto na raiz) — clona um repositório novo já nesse formato, converte um repositório existente para ele, cria uma worktree nova com branch nova a partir de uma base, lista as ativas, atualiza por fast-forward e remove com segurança — e também prepara e limpa worktrees descartáveis para revisar, rodar e testar um Pull Request sem tocar na branch original nem no diretório de trabalho do usuário. Funciona em qualquer repositório Git, com ou sem setup prévio de worktrees. Use sempre que o usuário pedir para clonar um repositório, criar, abrir, listar, atualizar ou remover uma worktree, uma branch ou uma pasta de trabalho, pedir uma worktree a partir de outra ou baseada em outra, ou pedir para revisar, validar, testar ou rodar um PR localmente e depois finalizar e limpar essa validação, mesmo que não use a palavra worktree nem o nome exato do comando. Para o relatório escrito da revisão, esta skill delega para a skill branch-diff-report.
 ---
 
 # PR Worktree
@@ -18,11 +18,53 @@ Nunca trate um como o outro: worktree de PR não se atualiza (se recria), e
 worktree de desenvolvimento não se descarta sem checar trabalho não salvo.
 
 Toda a lógica de Git (fetch, merge-base, `worktree add`, `reset`, remoção)
-já está resolvida nos scripts em `scripts/`. Não é preciso nenhum
-setup especial de worktrees no projeto: funciona num clone comum. **Nunca reimplemente essa
+já está resolvida nos scripts em `scripts/`. **Nunca reimplemente essa
 lógica na mão** — sempre delegue para os scripts. O papel desta skill é a
 camada de julgamento em volta deles: entender o pedido em linguagem natural,
 resolver ambiguidades, resumir resultados.
+
+## Padrão: repositório bare + worktree por branch
+
+**O padrão desta skill é bare.** Nenhuma branch — nem a `main`/`master` —
+deve ficar com checkout direto na raiz do projeto; a raiz é só o
+repositório bare (`<projeto>/.bare`), e toda branch, a começar pela
+padrão, vive numa worktree irmã dentro dessa mesma pasta
+(`<projeto>/main`, `<projeto>/minha-feature`, ...). Isso evita o problema
+de nunca haver "a" worktree livre para uma branch nova: todas, inclusive a
+principal, seguem a mesma regra.
+
+- **Projeto novo (clonar do zero):**
+  ```bash
+  bash scripts/manage-worktree.sh clone <url> [--dir <destino>] [--branch <nome>]
+  ```
+  Clona direto como bare em `<destino>/.bare` e já cria a worktree da
+  branch padrão do remoto em `<destino>/<branch>`. Sempre que o usuário
+  pedir para clonar um repositório, use isso em vez de `git clone`.
+
+- **Projeto já clonado do jeito antigo (checkout direto na raiz):**
+  ```bash
+  bash scripts/manage-worktree.sh bootstrap-bare [<caminho>] [--confirmo-riscos]
+  ```
+  Converte em lugar, criando `.bare` e uma worktree para a branch que
+  estava com checkout. **Recusa se a árvore não estiver limpa** (tracked ou
+  untracked) — resolva isso com o usuário antes, nunca descarte nada por
+  conta própria. Depois de converter, os arquivos soltos que existiam na
+  raiz são removidos — inclusive os que estão no `.gitignore` (`.env`,
+  `node_modules/`, build local, chaves...), que a checagem de árvore limpa
+  **não** cobre. Por isso o comando exige `--confirmo-riscos`: sem a flag,
+  ele só mostra o aviso e a lista dos arquivos ignorados que seriam
+  apagados, e sai sem mexer em nada. **Mostre esse aviso ao usuário palavra
+  por palavra e só rode de novo com `--confirmo-riscos` depois que ele
+  confirmar explicitamente que quer seguir mesmo assim** — nunca adicione a
+  flag por conta própria, mesmo com a árvore limpa.
+
+- **Detectar se um projeto já é bare:** `git rev-parse --is-bare-repository`
+  no caminho, ou olhe a saída de `list` — ela tem uma seção separada
+  "REPOSITÓRIO (bare, sem working tree própria)".
+
+Depois de bare, `new`, `list`, `update` e `remove` funcionam exatamente
+como descrito abaixo, sem nada especial: a base para `--from` costuma ser o
+caminho da worktree `main` (ex.: `<projeto>/main`).
 
 ## Fluxo: worktrees de desenvolvimento
 
@@ -196,10 +238,17 @@ valor sozinho.
 - Se um script falhar (branch não encontrada, base ambígua, worktree já
   existente e travado), reporte o erro ao usuário em vez de tentar
   contornar com comandos Git manuais.
-- Nunca rebaseie, force push, apague branch ou passe `--force` (nos
-  scripts `prepare`, `cleanup` e `manage-worktree remove`) por iniciativa
-  própria. Essas recusas dos scripts são proteções, não
-  obstáculos a driblar: leve a decisão ao usuário.
+- Nunca rebaseie, force push, apague branch ou passe `--force` ou
+  `--confirmo-riscos` (nos scripts `prepare`, `cleanup`, `manage-worktree
+  remove` e `manage-worktree bootstrap-bare`) por iniciativa própria.
+  Essas recusas dos scripts são proteções, não obstáculos a driblar: leve
+  a decisão ao usuário.
+- `bootstrap-bare` reestrutura a raiz do projeto (move `.git`, apaga os
+  arquivos soltos que sobraram lá, incluindo os ignorados pelo
+  `.gitignore`). Rodar sem `--confirmo-riscos` só mostra o aviso e a lista
+  do que seria apagado — use essa saída para explicar o risco ao usuário
+  palavra por palavra e só passe a flag depois que ele confirmar
+  explicitamente, mesmo com a árvore limpa.
 
 ## Pré-requisitos
 
@@ -210,11 +259,14 @@ valor sozinho.
 
 ## Referência rápida dos scripts
 
-- `scripts/manage-worktree.sh new|list|update|remove` — ciclo de vida das
-  worktrees de desenvolvimento. `new` cria branch e worktree a partir de uma
-  base atualizada; `list` separa desenvolvimento de validação de PR;
-  `update` faz fast-forward e recusa divergência; `remove` protege trabalho
-  não salvo e preserva a branch.
+- `scripts/manage-worktree.sh clone|bootstrap-bare|new|list|update|remove`
+  — ciclo de vida das worktrees de desenvolvimento. `clone` clona um
+  repositório já no padrão bare + worktree por branch; `bootstrap-bare`
+  converte um repositório existente (checkout direto na raiz) para esse
+  mesmo padrão; `new` cria branch e worktree a partir de uma base
+  atualizada; `list` separa a entrada bare, o desenvolvimento e a
+  validação de PR; `update` faz fast-forward e recusa divergência;
+  `remove` protege trabalho não salvo e preserva a branch.
 
 - `scripts/prepare-pr-validation.sh <feature-branch> [--base <branch>] [--force]`
   — cria/recria (protegendo edições do usuário) o worktree isolado, faz fetch, detecta a base, calcula o
