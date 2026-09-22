@@ -9,7 +9,7 @@ echo "🚀 Instalando Claude Code Skills..."
 
 mkdir -p "$SKILLS_DIR"
 
-for skill_dir in "$REPO_DIR"/skills/*; do
+for skill_dir in "$REPO_DIR"/*; do
   [ -d "$skill_dir" ] || continue
   [ -f "$skill_dir/SKILL.md" ] || continue
 
