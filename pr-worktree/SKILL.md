@@ -23,6 +23,39 @@ lógica na mão** — sempre delegue para os scripts. O papel desta skill é a
 camada de julgamento em volta deles: entender o pedido em linguagem natural,
 resolver ambiguidades, resumir resultados.
 
+## Regra: confirmar a pasta antes de criar
+
+Antes de **criar um projeto** (`clone`) ou **uma worktree** (`new`),
+confirme com o usuário em qual pasta isso vai acontecer — **sempre**, mesmo
+que o script tenha um padrão sensato e o pedido pareça óbvio. Só depois de
+ele responder, rode o script.
+
+- **Mostre o caminho absoluto resolvido**, não "a pasta padrão", e o que
+  será criado ali. Ex.: "Vou clonar em `/Users/x/repos/foo` (cria
+  `foo/.bare` e `foo/main`). Pode ser aí ou prefere outra pasta?"
+  - `clone`: sem `--dir`, o script cria `<pasta atual>/<nome-do-repo>`.
+  - `new`: sem `--dir`, o script cria a worktree como pasta irmã na raiz do
+    projeto (`<raiz do projeto>/<nome-derivado-da-branch>`), que **não é
+    necessariamente a pasta atual**.
+- **Única exceção:** o usuário deixou claro que é para criar na pasta atual
+  ("aqui", "nesta pasta", "no diretório atual"). Nesse caso não pergunte:
+  crie lá e informe o caminho usado. Para `new`, isso significa passar
+  `--dir "$PWD/<nome-derivado-da-branch>"` (o padrão do script seria a raiz
+  do projeto, que pode ser outra pasta); para `clone`, o padrão do script
+  já é a pasta atual.
+- Qualquer outro jeito de pedir **não** dispensa a confirmação: um pedido
+  genérico ("cria uma worktree pra feature/x") ou um caminho citado de
+  passagem ainda passam pela pergunta.
+- Se o usuário indicar outra pasta, passe-a em `--dir`. No `clone`, `--dir`
+  é a pasta do projeto; no `new`, `--dir` é o caminho da própria worktree
+  (pasta escolhida + nome derivado da branch), não a pasta-pai.
+- A confirmação vale só para o pedido em curso: um novo `clone` ou `new`
+  pergunta de novo.
+
+`bootstrap-bare` não entra nessa regra: ele converte em lugar uma pasta de
+projeto que o usuário já indicou. Worktrees de validação de PR também não: o
+`prepare` fixa o caminho (`../pr-review/pr-<branch>`) e não aceita `--dir`.
+
 ## Padrão: repositório bare + worktree por branch
 
 **O padrão desta skill é bare.** Nenhuma branch — nem a `main`/`master` —
@@ -39,7 +72,8 @@ principal, seguem a mesma regra.
   ```
   Clona direto como bare em `<destino>/.bare` e já cria a worktree da
   branch padrão do remoto em `<destino>/<branch>`. Sempre que o usuário
-  pedir para clonar um repositório, use isso em vez de `git clone`.
+  pedir para clonar um repositório, use isso em vez de `git clone` — depois
+  de confirmar a pasta (regra acima).
 
 - **Projeto já clonado do jeito antigo (checkout direto na raiz):**
   ```bash
@@ -84,7 +118,9 @@ bash scripts/manage-worktree.sh new <nova-branch> [--from <base>] [--dir <caminh
 base é atualizada por fast-forward antes, para a branch nova não nascer
 atrasada. Sem `--from`, usa a branch padrão do remoto. A worktree é criada
 como pasta irmã da raiz do projeto, com o nome derivado da branch, a menos
-que `--dir` diga outro lugar.
+que `--dir` diga outro lugar. **Confirme a pasta com o usuário antes de
+rodar** (regra acima) e, quando ela não for o padrão do script, passe-a em
+`--dir`.
 
 Se o usuário disser algo como "abre uma pasta nova pra feature/abc saindo da
 irop-report", isso é `new feature/abc --from <caminho da irop-report>`.
@@ -228,6 +264,8 @@ valor sozinho.
 
 ## Regras de segurança (nunca violar)
 
+- Nunca rode `clone` nem `new` sem antes confirmar a pasta com o usuário,
+  a menos que ele tenha deixado claro que é para criar na pasta atual.
 - Nunca commite nem faça push de arquivos ao criar uma branch ou worktree,
   a menos que o usuário peça isso explicitamente.
 - Nunca faça `git commit`, `git push`, ou `git checkout <branch>` dentro do
