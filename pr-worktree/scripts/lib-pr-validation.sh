@@ -11,6 +11,29 @@
 # Caminho físico (sem symlinks) de um diretório existente.
 abs_dir() { (cd "$1" 2>/dev/null && pwd -P); }
 
+# Define, a partir do diretório atual:
+#   GIT_COMMON_DIR  caminho físico do repositório compartilhado (.git ou .bare)
+#   REPO_ROOT       "o repositório principal" para mensagens e para rodar o
+#                   cleanup: a pasta do projeto no padrão bare, ou o toplevel
+#                   da worktree atual no padrão antigo
+#   PR_PARENT       pasta onde nasce `pr-review/` (irmã das worktrees)
+# Funciona também na raiz de um projeto bare, onde `--show-toplevel` falha
+# (não há working tree própria).
+resolve_repo() {
+  local common
+  common="$(git rev-parse --git-common-dir 2>/dev/null)" \
+    || { echo "Não estou dentro de um repositório Git." >&2; return 1; }
+  GIT_COMMON_DIR="$(abs_dir "$common")" \
+    || { echo "Não consegui resolver o diretório do repositório ('$common')." >&2; return 1; }
+  if [[ "$(git --git-dir="$GIT_COMMON_DIR" rev-parse --is-bare-repository)" == "true" ]]; then
+    REPO_ROOT="$(dirname "$GIT_COMMON_DIR")"      # <projeto>/.bare -> <projeto>
+    PR_PARENT="$REPO_ROOT"
+  else
+    REPO_ROOT="$(git rev-parse --show-toplevel)"
+    PR_PARENT="$(dirname "$REPO_ROOT")"
+  fi
+}
+
 # Imprime o PR-head registrado para o caminho, ou nada.
 registered_head() {
   local path="$1" file="$2"

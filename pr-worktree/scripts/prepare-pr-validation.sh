@@ -46,9 +46,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+resolve_repo
 STATE_DIR="$GIT_COMMON_DIR/pr-validation"
+CLEANUP_CMD="bash \"$SCRIPT_DIR/cleanup-pr-validation.sh\""
 mkdir -p "$STATE_DIR"
 
 # Slug seguro para nome de pasta (troca "/" e outros caracteres por "-")
@@ -56,8 +56,9 @@ SLUG="$(printf '%s' "$FEATURE_BRANCH" | tr '/' '-' | tr -c 'a-zA-Z0-9._-' '-')"
 
 # Worktrees ficam FORA da árvore do repo principal (pasta irmã), para não
 # precisar de entradas no .gitignore e não confundir ferramentas que
-# percorrem o diretório do repo.
-WORKTREES_ROOT="$(dirname "$REPO_ROOT")/pr-review"
+# percorrem o diretório do repo. No padrão bare, a "pasta irmã" é a própria
+# pasta do projeto (<projeto>/pr-review/), ao lado das worktrees.
+WORKTREES_ROOT="$PR_PARENT/pr-review"
 WORKTREE_PATH="${WORKTREES_ROOT}/pr-${SLUG}"
 
 echo "==> Atualizando referência remota de '$FEATURE_BRANCH'..."
@@ -156,15 +157,15 @@ desenvolvimento normal do usuário.
   reanexar o HEAD a uma branch.
 - Não tente mesclar, rebasear ou alterar a branch original a partir daqui —
   este worktree não tem relação de escrita com ela.
-- Não rode \`cleanup-pr-validation\` a partir de dentro desta pasta: o comando
-  apaga este diretório. Ele deve ser executado do repositório principal
-  (${REPO_ROOT}), nunca daqui.
+- Não rode o cleanup a partir de dentro desta pasta: o comando apaga este
+  diretório. Ele deve ser executado do repositório principal (${REPO_ROOT})
+  ou de outra worktree, nunca daqui.
 
 ## Ao terminar a revisão
 
 No terminal do repositório principal, não aqui:
 
-    cleanup-pr-validation ${FEATURE_BRANCH}
+    ${CLEANUP_CMD} "${FEATURE_BRANCH}"
 EOF
 
 # Registra o worktree ativo para o cleanup e para consultas futuras
@@ -194,6 +195,6 @@ echo
 echo "    Para o relatório de revisão, use a skill 'branch-diff-report' com:"
 echo "      base=$BASE_BRANCH  branch=$FEATURE_BRANCH  dir=$WORKTREE_PATH"
 echo
-echo "    Para finalizar e limpar:"
-echo "      cleanup-pr-validation \"$FEATURE_BRANCH\""
+echo "    Para finalizar e limpar (rode do repositório principal, não de dentro do worktree):"
+echo "      $CLEANUP_CMD \"$FEATURE_BRANCH\""
 

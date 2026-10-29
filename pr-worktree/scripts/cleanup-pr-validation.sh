@@ -6,6 +6,10 @@
 # prepare-pr-validation, sem tocar em nenhuma branch real. Sem argumento,
 # remove o último worktree criado.
 #
+# --all remove todos os registrados (cada um com as mesmas proteções abaixo).
+# Funciona a partir da raiz de um projeto bare, de qualquer worktree ou do
+# repositório principal — só não de dentro do worktree que será removido.
+#
 # Proteções:
 #   - só remove caminhos registrados pelo prepare (ou, em registros antigos,
 #     dentro de <repo>/../pr-review/); qualquer outro caminho é recusado;
@@ -19,24 +23,30 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-pr-validation.sh"
 
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-GIT_COMMON_DIR="$(git rev-parse --git-common-dir)"
+resolve_repo
 STATE_DIR="$GIT_COMMON_DIR/pr-validation"
 ACTIVE_FILE="$STATE_DIR/active-worktrees"
 LAST_FILE="$STATE_DIR/last-worktree"
 
 FORCE=0
+ALL=0
 ARGS=()
 for a in "$@"; do
   case "$a" in
     --force) FORCE=1 ;;
+    --all)   ALL=1 ;;
     *) ARGS+=("$a") ;;
   esac
 done
 set -- ${ARGS[@]+"${ARGS[@]}"}
 
+if [[ "$ALL" -eq 1 && $# -gt 0 ]]; then
+  echo "--all não combina com um alvo ('$1'). Use um ou outro." >&2
+  exit 1
+fi
+
 MAIN_ROOT="$(abs_dir "$(dirname "$GIT_COMMON_DIR")")"
-ALLOWED_ROOT="$(dirname "$REPO_ROOT")/pr-review"
+ALLOWED_ROOT="$PR_PARENT/pr-review"
 SKIPPED=0
 
 # Valida o caminho e devolve 0 se puder ser removido. Mensagens em stderr.
@@ -100,6 +110,23 @@ remove_one() {
   [[ -f "$LAST_FILE" ]] && grep -qxF "$path" "$LAST_FILE" 2>/dev/null && rm -f "$LAST_FILE"
   return 0
 }
+
+# --all: percorre todos os caminhos registrados. As mesmas proteções de cada
+# worktree valem aqui (edições, repositório principal, estar dentro dele);
+# os que forem preservados contam em SKIPPED e o script sai com erro.
+if [[ "$ALL" -eq 1 ]]; then
+  [[ -s "$ACTIVE_FILE" ]] || { echo "Nenhum worktree de validação registrado." >&2; exit 1; }
+  while IFS= read -r p; do
+    if [[ -n "$p" ]]; then remove_one "$p"; fi
+  done < <(awk -F'|' '{ print $3 }' "$ACTIVE_FILE")
+  git worktree prune
+  if [[ "$SKIPPED" -gt 0 ]]; then
+    echo "$SKIPPED worktree(s) preservado(s); veja os motivos acima." >&2
+    exit 1
+  fi
+  echo "==> Limpeza concluída."
+  exit 0
+fi
 
 TARGET="${1:-}"
 

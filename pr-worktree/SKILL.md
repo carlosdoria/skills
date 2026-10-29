@@ -23,6 +23,39 @@ lógica na mão** — sempre delegue para os scripts. O papel desta skill é a
 camada de julgamento em volta deles: entender o pedido em linguagem natural,
 resolver ambiguidades, resumir resultados.
 
+## Regra: confirmar a pasta antes de criar
+
+Antes de **criar um projeto** (`clone`) ou **uma worktree** (`new`),
+confirme com o usuário em qual pasta isso vai acontecer — **sempre**, mesmo
+que o script tenha um padrão sensato e o pedido pareça óbvio. Só depois de
+ele responder, rode o script.
+
+- **Mostre o caminho absoluto resolvido**, não "a pasta padrão", e o que
+  será criado ali. Ex.: "Vou clonar em `/Users/x/repos/foo` (cria
+  `foo/.bare` e `foo/main`). Pode ser aí ou prefere outra pasta?"
+  - `clone`: sem `--dir`, o script cria `<pasta atual>/<nome-do-repo>`.
+  - `new`: sem `--dir`, o script cria a worktree como pasta irmã na raiz do
+    projeto (`<raiz do projeto>/<nome-derivado-da-branch>`), que **não é
+    necessariamente a pasta atual**.
+- **Única exceção:** o usuário deixou claro que é para criar na pasta atual
+  ("aqui", "nesta pasta", "no diretório atual"). Nesse caso não pergunte:
+  crie lá e informe o caminho usado. Para `new`, isso significa passar
+  `--dir "$PWD/<nome-derivado-da-branch>"` (o padrão do script seria a raiz
+  do projeto, que pode ser outra pasta); para `clone`, o padrão do script
+  já é a pasta atual.
+- Qualquer outro jeito de pedir **não** dispensa a confirmação: um pedido
+  genérico ("cria uma worktree pra feature/x") ou um caminho citado de
+  passagem ainda passam pela pergunta.
+- Se o usuário indicar outra pasta, passe-a em `--dir`. No `clone`, `--dir`
+  é a pasta do projeto; no `new`, `--dir` é o caminho da própria worktree
+  (pasta escolhida + nome derivado da branch), não a pasta-pai.
+- A confirmação vale só para o pedido em curso: um novo `clone` ou `new`
+  pergunta de novo.
+
+`bootstrap-bare` não entra nessa regra: ele converte em lugar uma pasta de
+projeto que o usuário já indicou. Worktrees de validação de PR também não: o
+`prepare` fixa o caminho (`../pr-review/pr-<branch>`) e não aceita `--dir`.
+
 ## Padrão: repositório bare + worktree por branch
 
 **O padrão desta skill é bare.** Nenhuma branch — nem a `main`/`master` —
@@ -39,24 +72,32 @@ principal, seguem a mesma regra.
   ```
   Clona direto como bare em `<destino>/.bare` e já cria a worktree da
   branch padrão do remoto em `<destino>/<branch>`. Sempre que o usuário
-  pedir para clonar um repositório, use isso em vez de `git clone`.
+  pedir para clonar um repositório, use isso em vez de `git clone` — depois
+  de confirmar a pasta (regra acima).
 
 - **Projeto já clonado do jeito antigo (checkout direto na raiz):**
   ```bash
   bash scripts/manage-worktree.sh bootstrap-bare [<caminho>] [--confirmo-riscos]
   ```
   Converte em lugar, criando `.bare` e uma worktree para a branch que
-  estava com checkout. **Recusa se a árvore não estiver limpa** (tracked ou
-  untracked) — resolva isso com o usuário antes, nunca descarte nada por
-  conta própria. Depois de converter, os arquivos soltos que existiam na
-  raiz são removidos — inclusive os que estão no `.gitignore` (`.env`,
-  `node_modules/`, build local, chaves...), que a checagem de árvore limpa
-  **não** cobre. Por isso o comando exige `--confirmo-riscos`: sem a flag,
-  ele só mostra o aviso e a lista dos arquivos ignorados que seriam
-  apagados, e sai sem mexer em nada. **Mostre esse aviso ao usuário palavra
-  por palavra e só rode de novo com `--confirmo-riscos` depois que ele
-  confirmar explicitamente que quer seguir mesmo assim** — nunca adicione a
-  flag por conta própria, mesmo com a árvore limpa.
+  estava com checkout. **Recusa se a árvore não estiver limpa** (inclusive
+  arquivos não rastreados), se o caminho for a `$HOME` ou `/`, se houver
+  submódulos ou arquivos `assume-unchanged`/`skip-worktree` — resolva isso
+  com o usuário antes, nunca descarte nada por conta própria. **Nada é
+  apagado:** o conteúdo antigo da raiz vai para `.bootstrap-old.XXXXXX`
+  dentro do projeto e os arquivos ignorados pelo `.gitignore` (`.env`,
+  `node_modules/`, build local, chaves...) são movidos para a worktree
+  nova; se a criação da worktree falhar, tudo volta ao lugar. Como os
+  caminhos do projeto mudam (editor aberto, terminais e scripts que
+  apontavam para a raiz passam a apontar para a worktree), o comando exige
+  `--confirmo-riscos`: sem a flag ele só mostra o aviso, com a lista dos
+  arquivos ignorados que serão movidos, e sai com **código 3** sem mexer em
+  nada. **Mostre o aviso completo ao usuário, sem resumir, e só rode de
+  novo com `--confirmo-riscos` depois que ele confirmar explicitamente que
+  quer reestruturar o projeto** — nunca adicione a flag por conta própria,
+  mesmo com a árvore limpa. Ao terminar, diga onde ficou o
+  `.bootstrap-old.*`; quem apaga é o usuário, depois de conferir a worktree
+  nova.
 
 - **Detectar se um projeto já é bare:** `git rev-parse --is-bare-repository`
   no caminho, ou olhe a saída de `list` — ela tem uma seção separada
@@ -84,7 +125,9 @@ bash scripts/manage-worktree.sh new <nova-branch> [--from <base>] [--dir <caminh
 base é atualizada por fast-forward antes, para a branch nova não nascer
 atrasada. Sem `--from`, usa a branch padrão do remoto. A worktree é criada
 como pasta irmã da raiz do projeto, com o nome derivado da branch, a menos
-que `--dir` diga outro lugar.
+que `--dir` diga outro lugar. **Confirme a pasta com o usuário antes de
+rodar** (regra acima) e, quando ela não for o padrão do script, passe-a em
+`--dir`.
 
 Se o usuário disser algo como "abre uma pasta nova pra feature/abc saindo da
 irop-report", isso é `new feature/abc --from <caminho da irop-report>`.
@@ -122,9 +165,15 @@ Sem argumento, atualiza a worktree atual.
 bash scripts/manage-worktree.sh remove <alvo> [--force]
 ```
 
-Recusa se houver trabalho não salvo, se o alvo for a worktree principal, ou
-se você estiver dentro dela. A branch nunca é apagada junto: o script
-informa se ela já foi mesclada e deixa o `git branch -d` para o usuário.
+Recusa se houver trabalho não salvo (inclusive se o `git status` falhar: sem
+conseguir provar que está limpa, ela conta como suja), se for uma worktree
+em HEAD detached cujo commit não está em nenhuma branch/tag, se o alvo for a
+worktree principal ou se você estiver dentro dela. No padrão bare, a
+"principal" é a entrada `.bare`: a worktree da branch padrão (`<projeto>/main`)
+**não** é protegida — confirme com o usuário antes de removê-la. A branch
+nunca é apagada junto: o script informa se ela já foi mesclada na branch
+padrão do remoto e deixa o `git branch -d` para o usuário. O `--force` pode
+vir antes ou depois do alvo.
 
 **Antes de usar `--force`, mostre ao usuário o que será perdido** (a saída
 do erro já traz `git status --short`) e peça confirmação explícita. Não
@@ -224,10 +273,13 @@ valor sozinho.
    confirmar.
 4. **Nunca rode o cleanup a partir de dentro do próprio worktree que está
    sendo removido** — o comando apaga aquele diretório. Rode sempre a
-   partir do repositório principal (ou de outro worktree).
+   partir do repositório principal (no padrão bare, a raiz do projeto, onde
+   fica o `.bare`) ou de outro worktree.
 
 ## Regras de segurança (nunca violar)
 
+- Nunca rode `clone` nem `new` sem antes confirmar a pasta com o usuário,
+  a menos que ele tenha deixado claro que é para criar na pasta atual.
 - Nunca commite nem faça push de arquivos ao criar uma branch ou worktree,
   a menos que o usuário peça isso explicitamente.
 - Nunca faça `git commit`, `git push`, ou `git checkout <branch>` dentro do
@@ -243,16 +295,15 @@ valor sozinho.
   remove` e `manage-worktree bootstrap-bare`) por iniciativa própria.
   Essas recusas dos scripts são proteções, não obstáculos a driblar: leve
   a decisão ao usuário.
-- `bootstrap-bare` reestrutura a raiz do projeto (move `.git`, apaga os
-  arquivos soltos que sobraram lá, incluindo os ignorados pelo
-  `.gitignore`). Rodar sem `--confirmo-riscos` só mostra o aviso e a lista
-  do que seria apagado — use essa saída para explicar o risco ao usuário
-  palavra por palavra e só passe a flag depois que ele confirmar
-  explicitamente, mesmo com a árvore limpa.
+- `bootstrap-bare` reestrutura a raiz do projeto (move `.git` para `.bare` e
+  os arquivos soltos para `.bootstrap-old.*`; os ignorados pelo `.gitignore`
+  vão para a worktree nova). Rodar sem `--confirmo-riscos` só mostra o
+  aviso (código 3) — mostre-o ao usuário por inteiro e só passe a flag
+  depois que ele confirmar explicitamente, mesmo com a árvore limpa.
 
 ## Pré-requisitos
 
-- `git` >= 2.5 (suporte a worktrees).
+- `git` >= 2.17 (`git worktree remove`; worktrees em si existem desde a 2.5).
 - `gh` (GitHub CLI), autenticado, para detecção automática da branch base e
   busca de PRs por descrição em linguagem natural. Sem ele, sempre passe
   `--base` explicitamente.
@@ -277,5 +328,7 @@ valor sozinho.
   (`.git/pr-validation/` no repositório principal).
 - `scripts/lib-pr-validation.sh` — funções compartilhadas (registro e
   detecção de edições); é lido com `source`, não é chamado direto.
-- `tests/run-tests.sh` — testes de segurança do prepare/cleanup em repos
+- `tests/run-tests.sh` — testes de segurança do prepare/cleanup (repositório
+  comum e layout bare) e, ao final, do `manage-worktree.sh`
+  (`tests/manage-worktree-tests.sh`, que também roda sozinho), em repos
   temporários. Rode `bash tests/run-tests.sh` após alterar os scripts.

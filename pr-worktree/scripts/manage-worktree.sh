@@ -12,14 +12,19 @@
 #   bootstrap-bare [<caminho>] [--confirmo-riscos]
 #       Converte um repositório normal (não-bare) já existente, com a
 #       working tree na raiz, para o mesmo formato bare + worktree por
-#       branch. Recusa se a árvore não estiver limpa (tracked ou
-#       untracked). A branch atualmente com checkout na raiz (padrão:
+#       branch. Recusa se a árvore não estiver limpa (inclusive arquivos
+#       não rastreados), se o caminho for a $HOME ou /, ou se houver
+#       submódulos. A branch atualmente com checkout na raiz (padrão:
 #       repositório do diretório atual) vira uma worktree irmã.
-#       Apaga também qualquer arquivo ignorado pelo .gitignore que estiver
-#       solto na raiz (a checagem de árvore limpa não cobre esses
-#       arquivos). Por isso só roda com --confirmo-riscos: sem a flag,
-#       imprime o aviso e sai sem mexer em nada. Mostre o aviso ao usuário
-#       e só use a flag depois que ele confirmar de forma explícita.
+#       Nada é apagado: o conteúdo antigo da raiz é movido para uma pasta
+#       .bootstrap-old.XXXXXX dentro do projeto e os arquivos ignorados
+#       pelo .gitignore (.env, node_modules/ ...) são movidos para a
+#       worktree nova. Se a criação da worktree falhar, tudo volta ao lugar.
+#       Como a estrutura do projeto muda (caminhos que apontavam para a
+#       raiz passam a apontar para a worktree), só roda com
+#       --confirmo-riscos: sem a flag, imprime o aviso e sai com código 3
+#       sem mexer em nada. Mostre o aviso ao usuário e só use a flag depois
+#       que ele confirmar de forma explícita.
 #
 #   new <nova-branch> [--from <base>] [--dir <caminho>]
 #       Cria uma worktree nova, com branch nova, a partir de uma base
@@ -35,18 +40,25 @@
 #       divergiu, recusa e explica — nunca rebaseia nem força.
 #
 #   remove <alvo> [--force]
-#       Remove a worktree e, se a branch dela já foi mesclada, oferece
-#       apagar a branch também. Recusa se houver trabalho não salvo.
+#       Remove a worktree e, se a branch dela já foi mesclada, informa
+#       (a branch nunca é apagada). Recusa se houver trabalho não salvo —
+#       inclusive commits de uma worktree em HEAD detached que não estão em
+#       nenhuma branch/tag. --force pode vir em qualquer posição.
 #
 # <alvo> pode ser o caminho da worktree ou o nome da branch.
 # Worktrees ficam em uma pasta irmã à raiz do repositório principal — que,
 # no padrão bare (clone/bootstrap-bare), é a própria pasta do projeto, já
 # que ela não tem mais working tree própria.
 #
+# Códigos de saída: 0 ok; 1 erro ou recusa de proteção; 3 precisa de
+# confirmação do usuário (bootstrap-bare sem --confirmo-riscos).
+#
 set -euo pipefail
 
+# Imprime o bloco de comentários do cabeçalho (a partir da linha 3, até o
+# primeiro comentário que não seja contíguo), sem depender de intervalo fixo.
 usage() {
-  sed -n '3,44p' "$0" | sed 's/^# \{0,1\}//' >&2
+  awk 'NR >= 3 { if ($0 !~ /^#/) exit; sub(/^# ?/, ""); print }' "$0" >&2
   exit 1
 }
 
@@ -111,8 +123,13 @@ worktrees_bare() {
   '
 }
 
+# Falha fechada: se o `git status` não roda (índice corrompido, dono
+# diferente, diretório ausente...), não dá para provar que a worktree está
+# limpa — então conta como suja.
 esta_suja() {
-  [[ -n "$(git -C "$1" status --porcelain 2>/dev/null)" ]]
+  local out
+  out="$(git -C "$1" status --porcelain 2>/dev/null)" || return 0
+  [[ -n "$out" ]]
 }
 
 case "$SUBCMD" in
@@ -177,43 +194,42 @@ case "$SUBCMD" in
     REPO_ROOT="$(git -C "$ALVO" rev-parse --show-toplevel 2>/dev/null || true)"
     [[ -n "$REPO_ROOT" ]] || { echo "'$ALVO' não é um repositório Git." >&2; exit 1; }
 
+    # Uma pasta pessoal ou a raiz do disco nunca é "um projeto": a conversão
+    # mexeria em tudo que está dentro dela (ex.: dotfiles versionados na $HOME).
+    HOME_REAL="$(cd "$HOME" 2>/dev/null && pwd -P || true)"
+    if [[ "$REPO_ROOT" == "/" || ( -n "$HOME_REAL" && "$REPO_ROOT" == "$HOME_REAL" ) ]]; then
+      echo "Recuso converter '$REPO_ROOT': não é uma pasta de projeto." >&2; exit 1
+    fi
+
     if [[ "$(git -C "$REPO_ROOT" rev-parse --is-bare-repository)" == "true" ]]; then
       echo "'$REPO_ROOT' já é um repositório bare." >&2; exit 1
+    fi
+    if [[ ! -d "$REPO_ROOT/.git" ]]; then
+      echo "'$REPO_ROOT/.git' não é uma pasta (worktree vinculada ou submódulo); não converto." >&2; exit 1
+    fi
+    if [[ -e "$REPO_ROOT/.gitmodules" ]]; then
+      echo "'$REPO_ROOT' tem submódulos (.gitmodules); a conversão não os trata. Converta manualmente." >&2; exit 1
     fi
     if [[ "$(git -C "$REPO_ROOT" worktree list --porcelain | grep -c '^worktree ')" -gt 1 ]]; then
       echo "'$REPO_ROOT' já tem outras worktrees; converta manualmente ou peça ajuda." >&2
       exit 1
     fi
-    if [[ -n "$(git -C "$REPO_ROOT" status --porcelain --ignored=no 2>/dev/null)" ]]; then
-      echo "'$REPO_ROOT' tem alterações não salvas (tracked ou untracked):" >&2
-      git -C "$REPO_ROOT" status --short >&2
-      echo "Faça commit, stash ou limpe antes de converter." >&2
+    # assume-unchanged / skip-worktree (e sparse-checkout) escondem modificações
+    # do `git status`: não dá para provar que a árvore está limpa.
+    # (sem `grep -q` no pipe: com pipefail um SIGPIPE esconderia o match)
+    ESCONDIDOS="$(git -C "$REPO_ROOT" ls-files -v | grep '^[a-zS]' || true)"
+    if [[ -n "$ESCONDIDOS" ]]; then
+      echo "'$REPO_ROOT' tem arquivos marcados como assume-unchanged/skip-worktree (ou sparse-checkout);" >&2
+      echo "o status não mostra tudo que mudou. Desmarque-os antes de converter." >&2
       exit 1
     fi
-
-    # A checagem de árvore limpa acima não olha para arquivos ignorados
-    # pelo .gitignore — mas a limpeza abaixo apaga TUDO que sobrar solto na
-    # raiz, ignorado ou não. Por isso exige confirmação explícita: sem
-    # --confirmo-riscos, só avisa e sai, sem mexer em nada.
-    if [[ "$CONFIRMOU_RISCOS" -ne 1 ]]; then
-      IGNORADOS="$(git -C "$REPO_ROOT" status --porcelain --ignored | awk '/^!! /{print substr($0,4)}')"
-      {
-        echo "==> ATENÇÃO: 'bootstrap-bare' reestrutura a raiz de '$REPO_ROOT' e isso NÃO é reversível."
-        echo
-        echo "    Depois de mover o .git para .bare, todo arquivo ou pasta que sobrar"
-        echo "    solto na raiz é apagado — inclusive o que está no .gitignore (.env,"
-        echo "    node_modules/, build/, chaves, credenciais locais etc). A checagem de"
-        echo "    'árvore limpa' feita antes NÃO cobre esses arquivos: eles são"
-        echo "    removidos do disco sem backup, mesmo a árvore estando limpa."
-        echo
-        if [[ -n "$IGNORADOS" ]]; then
-          echo "    Arquivos/pastas ignorados encontrados na raiz agora (serão apagados):"
-          while IFS= read -r item; do echo "      $item"; done <<<"$IGNORADOS"
-          echo
-        fi
-        echo "    Confirme com o usuário que ele está ciente desse risco e quer seguir"
-        echo "    mesmo assim. Só então rode de novo com --confirmo-riscos."
-      } >&2
+    # --untracked-files=all vale mesmo com status.showUntrackedFiles=no.
+    STATUS="$(git -C "$REPO_ROOT" status --porcelain --untracked-files=all)" \
+      || { echo "Não consegui ler o status de '$REPO_ROOT'; não converto." >&2; exit 1; }
+    if [[ -n "$STATUS" ]]; then
+      echo "'$REPO_ROOT' tem alterações não salvas (tracked ou untracked):" >&2
+      git -C "$REPO_ROOT" status --short --untracked-files=all >&2
+      echo "Faça commit, stash ou limpe antes de converter." >&2
       exit 1
     fi
 
@@ -222,32 +238,106 @@ case "$SUBCMD" in
 
     SLUG="$(printf '%s' "$BR" | tr '/' '-' | tr -c 'a-zA-Z0-9._-' '-')"
     WORKTREE_PATH="$REPO_ROOT/$SLUG"
-    [[ ! -e "$WORKTREE_PATH" ]] || { echo "Já existe algo em '$WORKTREE_PATH'. Abortando." >&2; exit 1; }
+    [[ ! -e "$WORKTREE_PATH" ]] || {
+      echo "Já existe algo em '$WORKTREE_PATH' (é onde a worktree da branch '$BR' seria criada). Abortando." >&2; exit 1; }
+
+    # Arquivos/pastas ignorados pelo .gitignore (.env, node_modules/, build/...):
+    # a checagem de árvore limpa não os cobre e o Git não os recria. Eles são
+    # movidos para a worktree nova, não descartados.
+    IGNORADOS=()
+    while IFS= read -r -d '' item; do
+      IGNORADOS+=("$item")
+    done < <(git -C "$REPO_ROOT" ls-files --others --ignored --exclude-standard --directory -z)
+
+    # Reestrutura a pasta do projeto (caminhos mudam): exige confirmação
+    # explícita. Sem --confirmo-riscos só avisa e sai (código 3), sem mexer em nada.
+    if [[ "$CONFIRMOU_RISCOS" -ne 1 ]]; then
+      {
+        echo "==> ATENÇÃO: 'bootstrap-bare' vai reestruturar '$REPO_ROOT'."
+        echo
+        echo "    - O .git vira .bare (repositório bare); a raiz deixa de ter working tree própria."
+        echo "    - A branch '$BR' passa a viver na worktree '$WORKTREE_PATH'."
+        echo "    - Nada é apagado: o conteúdo atual da raiz vai para uma pasta temporária"
+        echo "      (.bootstrap-old.XXXXXX, dentro do projeto) e os arquivos ignorados pelo"
+        echo "      .gitignore são movidos para a worktree nova. Se algo falhar, tudo volta"
+        echo "      ao lugar."
+        echo "    - Caminhos que apontavam para '$REPO_ROOT' (editor aberto, terminais,"
+        echo "      scripts, atalhos) passam a precisar apontar para '$WORKTREE_PATH'."
+        echo
+        if [[ ${#IGNORADOS[@]} -gt 0 ]]; then
+          echo "    Arquivos/pastas ignorados que serão movidos para a worktree nova:"
+          for item in "${IGNORADOS[@]}"; do echo "      $item"; done
+          echo
+        fi
+        echo "    Confirme com o usuário que ele quer reestruturar o projeto assim."
+        echo "    Só então rode de novo com --confirmo-riscos."
+      } >&2
+      exit 3
+    fi
 
     echo "==> Convertendo '$REPO_ROOT' para bare + worktree por branch..."
+    STAGE="$(mktemp -d "$REPO_ROOT/.bootstrap-old.XXXXXX")"
+    STAGE_NAME="${STAGE##*/}"
+    BOOTSTRAP_ATIVO=1
+
+    # Se qualquer passo falhar antes de a worktree existir, devolve tudo ao
+    # lugar: nada foi apagado, então a restauração é só mover de volta.
+    desfazer_bootstrap() {
+      local rc=$?
+      [[ "${BOOTSTRAP_ATIVO:-0}" -eq 1 ]] || return 0
+      trap - EXIT INT TERM HUP
+      set +e
+      echo "==> Falhou (código $rc); restaurando '$REPO_ROOT' ao estado anterior..." >&2
+      git --git-dir="$REPO_ROOT/.bare" worktree prune 2>/dev/null
+      rm -rf "$WORKTREE_PATH"   # não existia antes da conversão (checado acima)
+      [[ -f "$REPO_ROOT/.git" ]] && rm -f "$REPO_ROOT/.git"
+      shopt -s dotglob nullglob
+      for item in "$STAGE"/*; do mv "$item" "$REPO_ROOT/${item##*/}"; done
+      shopt -u dotglob nullglob
+      [[ -d "$REPO_ROOT/.bare" ]] && mv "$REPO_ROOT/.bare" "$REPO_ROOT/.git"
+      git --git-dir="$REPO_ROOT/.git" config core.bare false
+      rmdir "$STAGE" 2>/dev/null
+      exit "$rc"
+    }
+    trap desfazer_bootstrap EXIT
+    trap 'exit 130' INT TERM HUP
+
     mv "$REPO_ROOT/.git" "$REPO_ROOT/.bare"
     git --git-dir="$REPO_ROOT/.bare" config core.bare true
-    echo "gitdir: ./.bare" > "$REPO_ROOT/.git"
+    printf 'gitdir: ./.bare\n' > "$REPO_ROOT/.git"
 
-    # Os arquivos que estavam soltos na raiz (a antiga working tree) ficam
-    # redundantes: a raiz não tem mais working tree própria. São removidos
-    # só depois de o `.git` (que já era ponteiro) ser recriado — o que
-    # importa (.bare) já está a salvo fora da raiz "solta".
     shopt -s dotglob nullglob
     for item in "$REPO_ROOT"/*; do
-      base="$(basename "$item")"
-      [[ "$base" == ".bare" || "$base" == ".git" ]] && continue
-      rm -rf "$item"
+      base="${item##*/}"
+      case "$base" in .bare|.git|"$STAGE_NAME") continue ;; esac
+      mv "$item" "$STAGE/$base"
     done
     shopt -u dotglob nullglob
 
     echo "==> Criando worktree '$BR'..."
     git -C "$REPO_ROOT" worktree add "$SLUG" "$BR"
+    BOOTSTRAP_ATIVO=0
+    trap - EXIT INT TERM HUP
+
+    for ign in ${IGNORADOS[@]+"${IGNORADOS[@]}"}; do
+      ign="${ign%/}"
+      [[ -e "$STAGE/$ign" || -L "$STAGE/$ign" ]] || continue
+      if [[ -e "$WORKTREE_PATH/$ign" || -L "$WORKTREE_PATH/$ign" ]]; then
+        echo "    ('$ign' já existe na worktree nova; a cópia antiga continua em '$STAGE')" >&2
+        continue
+      fi
+      mkdir -p "$(dirname "$WORKTREE_PATH/$ign")"
+      mv "$STAGE/$ign" "$WORKTREE_PATH/$ign" \
+        || echo "    (não consegui mover '$ign'; ele continua em '$STAGE')" >&2
+    done
 
     echo
     echo "==> Pronto. '$REPO_ROOT' agora é bare + worktree por branch."
     echo "    Repositório (bare): $REPO_ROOT/.bare"
     echo "    Worktree:           $WORKTREE_PATH"
+    echo "    Conteúdo antigo:    $STAGE"
+    echo "                        (cópia dos arquivos versionados; depois de conferir, apague:"
+    echo "                         rm -rf \"$STAGE\")"
     echo
     echo "    Próximas branches nascem como pastas irmãs aqui dentro."
     echo "    Para entrar: cd \"$WORKTREE_PATH\""
@@ -332,20 +422,22 @@ case "$SUBCMD" in
     fi
 
     echo "=== WORKTREES DE DESENVOLVIMENTO ==="
-    encontrou_dev=0
-    echo "=== VALIDAÇÃO DE PR (descartáveis) ==="  >/dev/null  # ordem tratada abaixo
     DEV_OUT=""; PR_OUT=""
     while IFS= read -r path; do
       [[ -n "$path" ]] || continue
       grep -qxF "$path" <<<"$BARE_PATHS" && continue  # entrada bare: já listada acima
-      branch="$(branch_da_worktree "$path")"
-      sujo=""; esta_suja "$path" && sujo="  [alterações não salvas]"
+      if [[ -d "$path" ]]; then
+        branch="$(branch_da_worktree "$path")"
+        sujo=""; esta_suja "$path" && sujo="  [alterações não salvas]"
+      else
+        # Pasta apagada à mão: o Git ainda registra a worktree.
+        branch="(ausente)"; sujo="  [pasta não existe mais; rode git worktree prune]"
+      fi
       linha="  ${branch}	${path}${sujo}"
       if eh_worktree_de_pr "$path"; then
         PR_OUT+="$linha"$'\n'
       else
         DEV_OUT+="$linha"$'\n'
-        encontrou_dev=1
       fi
     done < <(git worktree list --porcelain | awk '/^worktree /{print substr($0,10)}')
 
@@ -355,7 +447,6 @@ case "$SUBCMD" in
     echo "=== VALIDAÇÃO DE PR (descartáveis) ==="
     printf '%s' "${PR_OUT:-  (nenhuma)
 }"
-    [[ "$encontrou_dev" -eq 1 ]] || true
     ;;
 
   update)
@@ -407,9 +498,16 @@ case "$SUBCMD" in
 
   remove)
     [[ $# -ge 1 ]] || usage
-    ALVO="$1"; shift
-    FORCE=0
-    [[ "${1:-}" == "--force" ]] && FORCE=1
+    FORCE=0; ALVO=""
+    for a in "$@"; do
+      case "$a" in
+        --force) FORCE=1 ;;
+        -*) echo "Opção desconhecida: $a" >&2; usage ;;
+        *)  [[ -z "$ALVO" ]] || { echo "Só um alvo por vez; recebi '$ALVO' e '$a'." >&2; exit 1; }
+            ALVO="$a" ;;
+      esac
+    done
+    [[ -n "$ALVO" ]] || usage
 
     WT="$(resolver_worktree "$ALVO" || true)"
     [[ -n "$WT" ]] || { echo "Worktree não encontrada para '$ALVO'." >&2; git worktree list >&2; exit 1; }
@@ -431,16 +529,35 @@ case "$SUBCMD" in
       exit 1
     fi
 
+    # Worktree detached cujo commit não está em nenhuma branch/tag/remoto: os
+    # commits só existem aqui e somem junto com a pasta.
+    if [[ "$BR" == "(detached)" && "$FORCE" -eq 0 \
+          && -z "$(git -C "$WT" for-each-ref --contains HEAD --count=1 refs/heads refs/remotes refs/tags 2>/dev/null)" ]]; then
+      echo "A worktree '$WT' está em HEAD detached e o commit atual não está em nenhuma branch/tag:" >&2
+      echo "remover perde esse trabalho. Crie uma branch (git -C \"$WT\" switch -c <nome>) ou use --force." >&2
+      exit 1
+    fi
+
     echo "==> Removendo worktree: $WT"
-    git worktree remove ${FORCE:+--force} "$WT"
+    # --force só quando o usuário pediu (e já foi avisado do que se perde).
+    if [[ "$FORCE" -eq 1 ]]; then
+      git worktree remove --force "$WT"
+    else
+      git worktree remove "$WT"
+    fi
     git worktree prune
 
     if [[ "$BR" != "(detached)" ]] && git show-ref --verify --quiet "refs/heads/${BR}"; then
-      if git branch --merged 2>/dev/null | sed 's/^[ *]*//' | grep -qx "$BR"; then
-        echo "==> A branch '$BR' já foi mesclada e continua existindo."
+      # "Mesclada" é em relação à branch padrão do remoto, não ao HEAD de
+      # quem rodou o comando.
+      REF_PADRAO="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)"
+      if [[ -z "$REF_PADRAO" ]]; then
+        echo "==> A branch '$BR' foi preservada (não detectei a branch padrão para saber se já foi mesclada)."
+      elif git for-each-ref --merged="$REF_PADRAO" --format='%(refname:short)' "refs/heads/${BR}" 2>/dev/null | grep -qxF "$BR"; then
+        echo "==> A branch '$BR' já foi mesclada em '$REF_PADRAO' e continua existindo."
         echo "    Para apagá-la também: git branch -d \"$BR\""
       else
-        echo "==> A branch '$BR' foi preservada (tem commits não mesclados)."
+        echo "==> A branch '$BR' foi preservada (tem commits não mesclados em '$REF_PADRAO')."
       fi
     fi
     echo "==> Limpeza concluída."

@@ -1,21 +1,19 @@
 #!/usr/bin/env bash
 #
-# Testes de segurança de prepare/cleanup-pr-validation. Usa repositórios
+# Testes de segurança de prepare/cleanup-pr-validation (repositório comum e
+# layout bare) e, ao final, de manage-worktree.sh. Usa repositórios
 # temporários (remoto bare + clone); não toca em nada fora do mktemp.
 #
 set -uo pipefail
 
-SCRIPTS="$(cd "$(dirname "${BASH_SOURCE[0]}")/../scripts" && pwd)"
+HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPTS="$(cd "$HERE/../scripts" && pwd)"
+source "$HERE/helpers.sh"
+hermetic_git_env
+
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/pr-worktree-tests.XXXXXX")"
 trap 'rm -rf "$TMP"' EXIT
-PASS=0; FAIL=0
 
-ok()   { PASS=$((PASS+1)); echo "  ok   $1"; }
-nok()  { FAIL=$((FAIL+1)); echo "  FAIL $1"; }
-check() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then ok "$d"; else nok "$d"; fi; }
-check_not() { local d="$1"; shift; if "$@" >/dev/null 2>&1; then nok "$d"; else ok "$d"; fi; }
-
-export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
 git init -q --bare -b main "$TMP/remote.git"
 git clone -q "$TMP/remote.git" "$TMP/work/repo" 2>/dev/null || { mkdir -p "$TMP/work"; git clone -q "$TMP/remote.git" "$TMP/work/repo"; }
 cd "$TMP/work/repo"
@@ -40,6 +38,7 @@ echo "prepare"
 check "cria o worktree" prep
 check "registra o commit do PR (5º campo)" bash -c "awk -F'|' '{exit \$5 == \"\"}' .git/pr-validation/active-worktrees"
 check "recria quando não há edições" prep
+grep -q 'cleanup-pr-validation.sh' "$WT/CLAUDE.md" && ok "CLAUDE.md traz o caminho do script de cleanup" || nok "CLAUDE.md traz o caminho do script de cleanup"
 
 echo "prepare: edição do usuário"
 echo mine >> "$WT/a.txt"
@@ -62,10 +61,44 @@ check "remove worktree sem edições" cleanup feat
 [[ ! -d "$WT" ]] && ok "diretório removido" || nok "diretório removido"
 git show-ref --verify --quiet refs/heads/feat && ok "branch preservada" || nok "branch preservada"
 
-echo "cleanup: --force"
+echo "cleanup: --force e --all"
 prep >/dev/null 2>&1; echo mine >> "$WT/a.txt"
-check_not "--all preserva worktree com edição" cleanup --all
+# O motivo da recusa importa: um `--all` inexistente também "falharia".
+check_fail_msg "--all preserva worktree com edição" "edições suas" cleanup --all
+[[ -d "$WT" ]] && ok "--all deixou o worktree com edição no lugar" || nok "--all deixou o worktree com edição no lugar"
 check "--force remove com edição" cleanup feat --force
+prep >/dev/null 2>&1
+check "--all remove os registrados sem edição" cleanup --all
+[[ ! -d "$WT" ]] && ok "--all removeu o diretório" || nok "--all removeu o diretório"
+check_fail_msg "--all sem nada registrado avisa" "Nenhum worktree" cleanup --all
+check_fail_msg "--all não combina com alvo" "não combina" cleanup --all feat
 
-echo; echo "$PASS passaram, $FAIL falharam"
-[[ "$FAIL" -eq 0 ]]
+echo "layout bare: prepare/cleanup"
+BARE="$TMP/proj bare"            # com espaço de propósito
+BWT="$BARE/pr-review/pr-feat"
+git clone -q --bare "$TMP/remote.git" "$BARE/.bare"
+git -C "$BARE/.bare" config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git -C "$BARE/.bare" fetch -q origin
+git -C "$BARE/.bare" remote set-head origin main >/dev/null
+echo "gitdir: ./.bare" > "$BARE/.git"
+git -C "$BARE" worktree add -q main main
+bprep()  { ( cd "$1" && bash "$SCRIPTS/prepare-pr-validation.sh" feat --base main ); }
+bclean() { local d="$1"; shift; ( cd "$d" && bash "$SCRIPTS/cleanup-pr-validation.sh" "$@" ); }
+check "prepare a partir da raiz bare" bprep "$BARE"
+[[ -d "$BWT" ]] && ok "worktree criado em <projeto>/pr-review/" || nok "worktree criado em <projeto>/pr-review/"
+check "prepare a partir de uma worktree do projeto bare" bprep "$BARE/main"
+check_fail_msg "cleanup recusa a partir de dentro do worktree" "dentro de" bclean "$BWT" feat
+check_fail_msg "cleanup recusa a raiz bare" "repositório principal" bclean "$BARE" "$BARE"
+check "cleanup a partir da raiz bare" bclean "$BARE" feat
+[[ ! -d "$BWT" ]] && ok "diretório removido (bare)" || nok "diretório removido (bare)"
+bprep "$BARE" >/dev/null 2>&1
+check "cleanup --all a partir de uma worktree do projeto bare" bclean "$BARE/main" --all
+[[ ! -d "$BWT" ]] && ok "--all removeu o diretório (bare)" || nok "--all removeu o diretório (bare)"
+[[ -d "$BARE/.bare" && -d "$BARE/main" ]] && ok "projeto bare intacto" || nok "projeto bare intacto"
+
+RC_PREPARE=0; resumo || RC_PREPARE=1
+
+echo; echo "=== manage-worktree.sh ==="
+RC_MANAGE=0; bash "$HERE/manage-worktree-tests.sh" || RC_MANAGE=1
+
+[[ $RC_PREPARE -eq 0 && $RC_MANAGE -eq 0 ]]
