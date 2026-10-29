@@ -16,7 +16,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 git init -q --bare -b main "$TMP/remote.git"
 git clone -q "$TMP/remote.git" "$TMP/work/repo" 2>/dev/null || { mkdir -p "$TMP/work"; git clone -q "$TMP/remote.git" "$TMP/work/repo"; }
-cd "$TMP/work/repo"
+cd "$TMP/work/repo" || exit 1
 git checkout -q -b main 2>/dev/null || true
 echo base > a.txt; git add .; git commit -qm base; git push -q origin main
 git symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main 2>/dev/null || git remote set-head origin main
@@ -24,6 +24,7 @@ git checkout -q -b feat; echo pr > b.txt; echo changed >> a.txt; git add .; git 
 git push -q origin feat; git checkout -q main
 
 WT="$TMP/work/pr-review/pr-feat"
+# shellcheck disable=SC2120  # os argumentos (--force) chegam via `check ... prep --force`
 prep()    { bash "$SCRIPTS/prepare-pr-validation.sh" feat --base main "$@"; }
 cleanup() { bash "$SCRIPTS/cleanup-pr-validation.sh" "$@"; }
 

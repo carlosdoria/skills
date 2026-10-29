@@ -19,6 +19,7 @@ abs_dir() { (cd "$1" 2>/dev/null && pwd -P); }
 #   PR_PARENT       pasta onde nasce `pr-review/` (irmã das worktrees)
 # Funciona também na raiz de um projeto bare, onde `--show-toplevel` falha
 # (não há working tree própria).
+# shellcheck disable=SC2034  # as variáveis são lidas pelos scripts que fazem source desta lib
 resolve_repo() {
   local common
   common="$(git rev-parse --git-common-dir 2>/dev/null)" \
