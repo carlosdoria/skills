@@ -1,0 +1,49 @@
+name: tests
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }})
+    # macos-latest roda o mesmo Bash 3.2 do macOS do dia a dia; o ubuntu cobre o Bash 5 / GNU.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sintaxe (bash -n)
+        run: |
+          set -e
+          for f in install.sh tests/*.sh */scripts/*.sh */tests/*.sh; do
+            echo "bash -n $f"
+            bash -n "$f"
+          done
+
+      - name: Versões
+        run: bash --version | head -1 && git --version
+
+      - name: install.sh
+        run: bash tests/test-install.sh
+
+      - name: branch-diff-report
+        run: bash branch-diff-report/tests/run-tests.sh
+
+      - name: pr-worktree
+        run: bash pr-worktree/tests/run-tests.sh
+
+  shellcheck:
+    name: shellcheck (informativo)
+    runs-on: ubuntu-latest
+    # Ainda não passou por uma limpeza: reporta, mas não bloqueia o PR.
+    # Quando estiver verde, remova o continue-on-error para torná-lo obrigatório.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: shellcheck -S warning install.sh tests/*.sh */scripts/*.sh */tests/*.sh
