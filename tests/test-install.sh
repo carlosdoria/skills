@@ -15,18 +15,19 @@ afirma() { local d="$1"; shift; if "$@"; then ok "$d"; else nok "$d"; fi; }
 
 export GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1
 export GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@t GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@t
-SKILLS="$(ls -d "$ROOT"/*/SKILL.md | xargs -n1 dirname | xargs -n1 basename)"
+SKILLS=""
+for f in "$ROOT"/*/SKILL.md; do SKILLS="$SKILLS $(basename "$(dirname "$f")")"; done
 
 echo "install: links (padrão)"
 D="$TMP/links"
-OUT="$(CLAUDE_SKILLS_DIR="$D" bash "$ROOT/install.sh" 2>&1)"; RC=$?
+CLAUDE_SKILLS_DIR="$D" bash "$ROOT/install.sh" >/dev/null 2>&1; RC=$?
 afirma "sai com 0" test $RC -eq 0
 for s in $SKILLS; do
   afirma "$s é um link para o checkout" test "$(readlink "$D/$s")" = "$ROOT/$s"
   afirma "$s encontra o SKILL.md pelo link" test -f "$D/$s/SKILL.md"
 done
 afirma "não instala pastas sem SKILL.md (ex.: tests, .github)" test ! -e "$D/tests" -a ! -e "$D/.github"
-OUT2="$(CLAUDE_SKILLS_DIR="$D" bash "$ROOT/install.sh" 2>&1)"; RC=$?
+CLAUDE_SKILLS_DIR="$D" bash "$ROOT/install.sh" >/dev/null 2>&1; RC=$?
 afirma "rodar de novo é idempotente" test $RC -eq 0
 afirma "idempotente: sem backup quando já era link" test ! -e "$D/.backup"
 

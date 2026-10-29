@@ -21,7 +21,8 @@ em() { local d="$1"; shift; ( cd "$d" && "$@" ); }
 #   FAKE_STATUS_FAIL=1  `git status` sai com erro
 #   FAKE_ADD_FAIL=1     `git worktree add` sai com erro
 #   FAKE_GIT_LOG=<arq>  acrescenta os argumentos de cada chamada
-export REAL_GIT="$(command -v git)"
+REAL_GIT="$(command -v git)"
+export REAL_GIT
 mkdir -p "$TMP/fakebin"
 cat > "$TMP/fakebin/git" <<'EOF'
 #!/usr/bin/env bash

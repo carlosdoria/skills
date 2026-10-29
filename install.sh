@@ -18,7 +18,7 @@
 #
 set -euo pipefail
 
-MODE=link
+MODE="link"
 for arg in "$@"; do
   case "$arg" in
     --copy) MODE=copy ;;
