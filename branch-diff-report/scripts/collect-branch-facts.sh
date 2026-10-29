@@ -126,10 +126,12 @@ echo
 echo "=== SINALIZADORES (arquivos sensiveis tocados) ==="
 g diff --name-only -M "$MERGE_BASE" "$PR_HEAD" | while IFS= read -r f; do
   case "$f" in
-    *migration*|*migrations/*|*.sql)                    echo "migracao_ou_sql: $f" ;;
-    .env*|*.env|*config*|*.yml|*.yaml|*.toml|*.ini)     echo "configuracao: $f" ;;
-    *lock*|package-lock.json|yarn.lock|pnpm-lock.yaml)  echo "lockfile: $f" ;;
+    # Do mais específico para o mais genérico: o primeiro padrão que casa vence,
+    # então lockfile/CI precisam vir antes de configuração (*.yml, *.yaml).
+    package-lock.json|pnpm-lock.yaml|*.lock|bun.lockb|go.sum) echo "lockfile: $f" ;;
     .github/*|*Dockerfile*|*docker-compose*)            echo "ci_ou_infra: $f" ;;
+    *migration*|*.sql)                                  echo "migracao_ou_sql: $f" ;;
+    .env*|*.env|*config*|*.yml|*.yaml|*.toml|*.ini)     echo "configuracao: $f" ;;
     *auth*|*Auth*|*permission*|*Permission*|*token*)    echo "auth_ou_permissao: $f" ;;
     *webhook*|*Webhook*)                                echo "endpoint_publico: $f" ;;
   esac
