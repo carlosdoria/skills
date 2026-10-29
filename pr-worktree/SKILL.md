@@ -80,17 +80,24 @@ principal, seguem a mesma regra.
   bash scripts/manage-worktree.sh bootstrap-bare [<caminho>] [--confirmo-riscos]
   ```
   Converte em lugar, criando `.bare` e uma worktree para a branch que
-  estava com checkout. **Recusa se a árvore não estiver limpa** (tracked ou
-  untracked) — resolva isso com o usuário antes, nunca descarte nada por
-  conta própria. Depois de converter, os arquivos soltos que existiam na
-  raiz são removidos — inclusive os que estão no `.gitignore` (`.env`,
-  `node_modules/`, build local, chaves...), que a checagem de árvore limpa
-  **não** cobre. Por isso o comando exige `--confirmo-riscos`: sem a flag,
-  ele só mostra o aviso e a lista dos arquivos ignorados que seriam
-  apagados, e sai sem mexer em nada. **Mostre esse aviso ao usuário palavra
-  por palavra e só rode de novo com `--confirmo-riscos` depois que ele
-  confirmar explicitamente que quer seguir mesmo assim** — nunca adicione a
-  flag por conta própria, mesmo com a árvore limpa.
+  estava com checkout. **Recusa se a árvore não estiver limpa** (inclusive
+  arquivos não rastreados), se o caminho for a `$HOME` ou `/`, se houver
+  submódulos ou arquivos `assume-unchanged`/`skip-worktree` — resolva isso
+  com o usuário antes, nunca descarte nada por conta própria. **Nada é
+  apagado:** o conteúdo antigo da raiz vai para `.bootstrap-old.XXXXXX`
+  dentro do projeto e os arquivos ignorados pelo `.gitignore` (`.env`,
+  `node_modules/`, build local, chaves...) são movidos para a worktree
+  nova; se a criação da worktree falhar, tudo volta ao lugar. Como os
+  caminhos do projeto mudam (editor aberto, terminais e scripts que
+  apontavam para a raiz passam a apontar para a worktree), o comando exige
+  `--confirmo-riscos`: sem a flag ele só mostra o aviso, com a lista dos
+  arquivos ignorados que serão movidos, e sai com **código 3** sem mexer em
+  nada. **Mostre o aviso completo ao usuário, sem resumir, e só rode de
+  novo com `--confirmo-riscos` depois que ele confirmar explicitamente que
+  quer reestruturar o projeto** — nunca adicione a flag por conta própria,
+  mesmo com a árvore limpa. Ao terminar, diga onde ficou o
+  `.bootstrap-old.*`; quem apaga é o usuário, depois de conferir a worktree
+  nova.
 
 - **Detectar se um projeto já é bare:** `git rev-parse --is-bare-repository`
   no caminho, ou olhe a saída de `list` — ela tem uma seção separada
@@ -158,9 +165,15 @@ Sem argumento, atualiza a worktree atual.
 bash scripts/manage-worktree.sh remove <alvo> [--force]
 ```
 
-Recusa se houver trabalho não salvo, se o alvo for a worktree principal, ou
-se você estiver dentro dela. A branch nunca é apagada junto: o script
-informa se ela já foi mesclada e deixa o `git branch -d` para o usuário.
+Recusa se houver trabalho não salvo (inclusive se o `git status` falhar: sem
+conseguir provar que está limpa, ela conta como suja), se for uma worktree
+em HEAD detached cujo commit não está em nenhuma branch/tag, se o alvo for a
+worktree principal ou se você estiver dentro dela. No padrão bare, a
+"principal" é a entrada `.bare`: a worktree da branch padrão (`<projeto>/main`)
+**não** é protegida — confirme com o usuário antes de removê-la. A branch
+nunca é apagada junto: o script informa se ela já foi mesclada na branch
+padrão do remoto e deixa o `git branch -d` para o usuário. O `--force` pode
+vir antes ou depois do alvo.
 
 **Antes de usar `--force`, mostre ao usuário o que será perdido** (a saída
 do erro já traz `git status --short`) e peça confirmação explícita. Não
@@ -260,7 +273,8 @@ valor sozinho.
    confirmar.
 4. **Nunca rode o cleanup a partir de dentro do próprio worktree que está
    sendo removido** — o comando apaga aquele diretório. Rode sempre a
-   partir do repositório principal (ou de outro worktree).
+   partir do repositório principal (no padrão bare, a raiz do projeto, onde
+   fica o `.bare`) ou de outro worktree.
 
 ## Regras de segurança (nunca violar)
 
@@ -281,16 +295,15 @@ valor sozinho.
   remove` e `manage-worktree bootstrap-bare`) por iniciativa própria.
   Essas recusas dos scripts são proteções, não obstáculos a driblar: leve
   a decisão ao usuário.
-- `bootstrap-bare` reestrutura a raiz do projeto (move `.git`, apaga os
-  arquivos soltos que sobraram lá, incluindo os ignorados pelo
-  `.gitignore`). Rodar sem `--confirmo-riscos` só mostra o aviso e a lista
-  do que seria apagado — use essa saída para explicar o risco ao usuário
-  palavra por palavra e só passe a flag depois que ele confirmar
-  explicitamente, mesmo com a árvore limpa.
+- `bootstrap-bare` reestrutura a raiz do projeto (move `.git` para `.bare` e
+  os arquivos soltos para `.bootstrap-old.*`; os ignorados pelo `.gitignore`
+  vão para a worktree nova). Rodar sem `--confirmo-riscos` só mostra o
+  aviso (código 3) — mostre-o ao usuário por inteiro e só passe a flag
+  depois que ele confirmar explicitamente, mesmo com a árvore limpa.
 
 ## Pré-requisitos
 
-- `git` >= 2.5 (suporte a worktrees).
+- `git` >= 2.17 (`git worktree remove`; worktrees em si existem desde a 2.5).
 - `gh` (GitHub CLI), autenticado, para detecção automática da branch base e
   busca de PRs por descrição em linguagem natural. Sem ele, sempre passe
   `--base` explicitamente.
@@ -315,5 +328,7 @@ valor sozinho.
   (`.git/pr-validation/` no repositório principal).
 - `scripts/lib-pr-validation.sh` — funções compartilhadas (registro e
   detecção de edições); é lido com `source`, não é chamado direto.
-- `tests/run-tests.sh` — testes de segurança do prepare/cleanup em repos
+- `tests/run-tests.sh` — testes de segurança do prepare/cleanup (repositório
+  comum e layout bare) e, ao final, do `manage-worktree.sh`
+  (`tests/manage-worktree-tests.sh`, que também roda sozinho), em repos
   temporários. Rode `bash tests/run-tests.sh` após alterar os scripts.
