@@ -73,14 +73,13 @@ O `gh` (GitHub CLI) é usado pelas skills que precisam consultar PRs no GitHub.
 Cada skill tem seus testes em `<skill>/tests/run-tests.sh`; o instalador tem
 `tests/test-install.sh`. O workflow `.github/workflows/tests.yml` roda tudo em
 cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
-`shellcheck` é informativo por enquanto.
+`shellcheck` (`-S warning`) também precisa passar.
 
 Para exigir que o PR só entre com os testes verdes, ative em *Settings ›
-Branches* uma regra de proteção para `main` com os checks `tests (macos-latest)`
-e `tests (ubuntu-latest)` como obrigatórios.
+Branches* uma regra de proteção para `main` com os checks `tests (macos-latest)`,
+`tests (ubuntu-latest)` e `shellcheck` como obrigatórios.
 
 ## Melhorias futuras
 
-- [ ] Limpar os avisos do `shellcheck` e torná-lo obrigatório no CI.
 - [ ] Documentar processo de contribuição (`CONTRIBUTING.md`) para novas skills.
 - [ ] Adicionar versionamento/changelog das skills.

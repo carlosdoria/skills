@@ -38,11 +38,8 @@ jobs:
         run: bash pr-worktree/tests/run-tests.sh
 
   shellcheck:
-    name: shellcheck (informativo)
+    name: shellcheck
     runs-on: ubuntu-latest
-    # Ainda não passou por uma limpeza: reporta, mas não bloqueia o PR.
-    # Quando estiver verde, remova o continue-on-error para torná-lo obrigatório.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
