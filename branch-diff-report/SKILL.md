@@ -1,18 +1,20 @@
 ---
 name: branch-diff-report
-description: Compara duas branches Git quaisquer e gera um relatório de revisão em Markdown a partir do diff — pontos de atenção classificados por risco, tudo o que mudou agrupado por área do sistema, componentes alterados, arquivos sem cobertura de teste, mudanças de dependência e ordem sugerida de revisão. Funciona em qualquer repositório, sem worktree e sem alterar nada. Use sempre que o usuário pedir para comparar duas branches, ver o que mudou entre uma branch e outra, resumir ou analisar um PR, gerar relatório ou review de um diff, ou perguntar o que uma branch traz em relação à base, mesmo que não use as palavras relatório, diff ou o nome exato do comando.
+description: Compara duas branches Git quaisquer e gera um resumo em Markdown pronto para a descrição do PR — riscos classificados por nível, problemas encontrados e melhorias sugeridas. Funciona em qualquer repositório, sem worktree e sem alterar nada. Use sempre que o usuário pedir para comparar duas branches, ver o que mudou entre uma branch e outra, resumir ou analisar um PR, escrever a descrição de um PR, gerar relatório ou review de um diff, ou perguntar o que uma branch traz em relação à base, mesmo que não use as palavras relatório, diff ou o nome exato do comando.
 ---
 
 # Branch Diff Report
 
-Compara duas branches e escreve um relatório de revisão em Markdown.
-É uma skill **somente leitura**: não cria worktree, não muda de branch, não
-altera refs nem o working tree. Serve para qualquer repositório Git.
+Compara duas branches e escreve um resumo em Markdown para a descrição do
+PR. Do lado do Git é **somente leitura**: não cria worktree, não muda de
+branch, não altera refs nem o working tree. Serve para qualquer repositório
+Git. A única escrita possível é a descrição do PR no GitHub, e só com o
+OK do usuário (passo 6).
 
 A coleta de dados está resolvida no script em `scripts/`. **Nunca
 reimplemente essa lógica na mão** — sempre delegue para o script. O papel
 desta skill é a camada de julgamento em volta dele: interpretar os fatos,
-classificar risco, escrever o texto.
+separar riscos, problemas e melhorias, escrever o resumo.
 
 Outras skills (validação de PR com ou sem worktree) chamam esta aqui para a
 parte do relatório. Quando for esse o caso, use `--dir` para apontar ao
@@ -25,6 +27,11 @@ diretório certo.
 - Se o usuário deu as duas, use-as direto.
 - Se deu só uma, a outra é a base: tente `gh pr view <branch> --json baseRefName`
   ou use a branch padrão do remoto. Confirme com o usuário se houver dúvida.
+- Se deu um número ou link de PR, rode
+  `gh pr view <n> --json number,state,baseRefName,headRefName,mergeCommit`.
+  PR aberto: compare `baseRefName` com `headRefName`. PR mergeado: compare
+  `<mergeCommit>^1` com `<mergeCommit>`, que reproduz o diff do PR mesmo com
+  a branch apagada.
 - Se descreveu o PR em linguagem natural ("o PR do relatório do capitão"),
   tente `gh pr list` ou `gh search prs --repo <owner/repo> <termos>`.
 - Se houver mais de uma candidata, pergunte qual — não adivinhe.
@@ -47,142 +54,109 @@ componentes/hooks com contagem de consumidores.
 
 Ele não classifica risco nem escreve texto — isso é trabalho seu.
 
+Se a saída tiver só o `aviso` de nenhum commit à frente, a branch já entrou
+na base. Quando houver `para_comparar`, rode o script de novo com os dois
+valores dessa linha, sem perguntar. Sem merge commit (fast-forward), diga
+isso ao usuário e peça o intervalo de commits.
+
 ### 3. Interprete
 
-As heurísticas do script são um ponto de partida, não a verdade. O
-relatório precisa contar ao revisor **tudo** o que o PR muda, então leia
-antes de escrever:
+O relatório é um **resumo** para o revisor: o que pode quebrar, o que está
+errado e o que vale melhorar. Não é um inventário do diff. As heurísticas
+do script são um ponto de partida, não a verdade:
 
-- **Leia o diff de cada arquivo** listado em `=== ARQUIVOS ===`. Lockfiles
-  e arquivos gerados não pedem leitura linha a linha: entram como um
-  bullet só. Os arquivos de maior risco pedem leitura atenta antes de
-  qualquer afirmação. Um webhook sinalizado como "endpoint público" pode
-  já ter validação de assinatura — verifique em vez de repetir a
-  heurística.
-- **Agrupe por área do sistema**, não por pasta. "Checkout (UI)" e
-  "Pagamentos (core)" dizem mais ao revisor do que `src/components/`.
-  Arquivos de teste entram na área do código que testam.
-- **Descreva a intenção do PR em linguagem humana**, a partir dos commits
-  e do diff, não do título da branch.
-- **Só afirme o que você verificou.** Se não conseguiu determinar algo
-  (ex.: quem consome um componente), diga que não foi verificado em vez de
-  chutar. Melhor uma linha a menos do que uma linha errada. Um arquivo que
-  você não leu (PR muito grande) aparece como `não lido: <caminho>` na
-  área dele, nunca descrito pelo nome.
+- **Leia o diff dos arquivos que podem render um achado**: os sinalizados
+  pelo script, os de lógica com mais linhas alteradas e os que mudam
+  contrato (tipos, DTOs, rotas, schemas). Lockfiles, arquivos gerados e
+  mudanças só de texto não pedem leitura.
+- **Use a contagem de consumidores** de `=== COMPONENTES ===`: componente
+  ou hook com contrato alterado e muitos consumidores pesa mais no risco do
+  que um usado em um lugar só.
+- **Verifique antes de afirmar.** Um webhook sinalizado como "endpoint
+  público" pode já ter validação de assinatura; um arquivo marcado como
+  autenticação pode não mexer em credencial. Se o sinal não se confirmou,
+  ele não entra no relatório.
+- **Só afirme o que você verificou.** Melhor um achado a menos do que um
+  achado errado.
 
-O passo termina quando **cada arquivo de `=== ARQUIVOS ===` está em
-exatamente uma área** e a soma dos arquivos por área bate com o total do
-cabeçalho.
+### 4. Classifique os achados
 
-### 4. Classifique o risco
+Cada achado vai para exatamente uma seção:
+
+| Seção | O que entra |
+|---|---|
+| Riscos | O que pode quebrar em produção ou para quem consome o código, mesmo que o código esteja certo |
+| Problemas | Defeito concreto encontrado no diff: bug, caso não tratado, código sem teste, tipo inseguro, commit com tipo errado |
+| Melhorias | Sugestão opcional que não bloqueia o merge |
+
+Os riscos levam um nível:
 
 | Nível | Critério |
 |---|---|
 | Alto | Migração de banco, mudança em rota pública, autenticação/permissão, remoção de campo ou endpoint, mudança de contrato consumida por terceiros |
 | Médio | Mudança de contrato interno, config/env nova, dependência atualizada com major bump, alteração em código compartilhado sem teste |
-| Baixo | UI sem lógica nova, renomeações, texto, testes, documentação |
+| Baixo | Mudança de comportamento em fluxo isolado, com teste |
 
-A tabela vai de Alto para Médio e depois Baixo. Se nada se enquadrar em
-Alto ou Médio, diga isso explicitamente em vez de inflar a tabela para
-parecer completa.
+### 5. Escreva o resumo
 
-### 5. Escreva o relatório
-
-Mostre o relatório na conversa. Se o usuário pedir um arquivo, salve como
+O texto vai para a descrição do PR, lida por quem revisa. Mostre-o na
+conversa dentro de um bloco ` ```markdown `, para o usuário copiar sem
+perder a formatação. Se o usuário pedir um arquivo, salve como
 `PR-REVIEW.md` na raiz do repositório onde a comparação foi feita. Use este
-formato — ícones **apenas** nos três títulos indicados, em nenhum outro
-lugar:
+formato:
 
 ````markdown
-# Revisão: <branch>
-
-**Branch base:** `<base>` · **Autor:** <autor> · **Commits:** <n>
-**<n> arquivos** alterados · `+<n>` / `−<n>`
+## Resumo
 
 <1 a 2 linhas em linguagem humana: o que o PR faz e por quê.>
 
----
+## Riscos
 
-## ⚠️ Pontos de atenção
+- **Alto/Médio/Baixo** · <o que pode quebrar e quando> — `<caminho>`
 
-| Risco | Onde | Por quê |
-|---|---|---|
-| Alto/Médio/Baixo | `<caminho>` | <motivo concreto e verificado> |
+## Problemas
 
----
+- <defeito concreto> — `<caminho>`
 
-## O que mudou
+## Melhorias
 
-### <Área do sistema> · <n> arquivos
-
-- <Verbo> <mudança concreta, em linguagem humana> — `<caminho>`, `<caminho>`
-
----
-
-## Componentes alterados
-
-| Componente | Tipo | Consumidores |
-|---|---|---|
-| `<Nome>` | Novo / Modificado / Modificado (hook) | <n> |
-
-<Uma linha apontando componentes compartilhados e o que mais pode quebrar.>
-
----
-
-## 🧪 Sem cobertura de teste
-
-Arquivos de código alterados que não têm teste correspondente no diff:
-
-- `<caminho>`
-
-Cobertura no diff: **<n> de <n>** arquivos de lógica.
-
----
-
-## 📦 Dependências
-
-| Pacote | Versão | Situação |
-|---|---|---|
-| `<pacote>` | `<versão>` ou `<antiga>` → `<nova>` | Nova / Atualizada / Removida |
-
----
-
-## Ordem sugerida de revisão
-
-1. `<caminho>` — <por que começar aqui>
+- <sugestão> — `<caminho>`
 ````
-
-### A seção O que mudou
-
-- **Um bullet por mudança**, não por arquivo. Arquivos que implementam a
-  mesma mudança vão no mesmo bullet.
-- **O bullet começa pelo verbo** que diz a natureza da mudança: Adiciona,
-  Altera, Remove, Renomeia, Move, Refatora (sem mudar comportamento).
-  Remoções, renomeações e mudanças de contrato aparecem sempre explícitas:
-  são elas que quebram quem consome o código.
-- **As áreas com mudança de comportamento vêm primeiro**; build, CI e
-  documentação, por último.
 
 ### Regras de formatação
 
-- **Seções vazias são omitidas**, não preenchidas com "nenhum". Se o PR
-  não mexe em dependências, a seção `📦 Dependências` simplesmente não
-  aparece. A exceção é `⚠️ Pontos de atenção`, que sempre aparece (passo 4).
-- **Ícones com moderação**: só os três já previstos no modelo. Nenhum
-  ícone em tabelas, listas ou corpo de texto.
-- **Diffs pequenos** (menos de ~5 arquivos ou só texto/config) recebem uma
-  versão curta: cabeçalho com o objetivo, "Pontos de atenção" e "O que
-  mudou", ainda com todos os arquivos. Não force o formato completo.
-- **A ordem sugerida de revisão vai do maior risco ao menor**, não da
-  maior pasta à menor.
-- O relatório é um mapa para o revisor humano, não um veredito. Não
-  aprove nem rejeite o PR.
+- **Um achado por bullet, em uma ou duas linhas.** Diga o que é e onde;
+  não descreva o diff nem explique como o código funciona.
+- **Riscos vão de Alto para Baixo.** Se não houver risco Alto ou Médio,
+  escreva isso numa linha em vez de inflar a lista.
+- **Seções vazias são omitidas.** A exceção é Riscos, que sempre aparece.
+- **No máximo uns 5 itens por seção.** Se houver mais, fique com os mais
+  importantes e diga quantos ficaram de fora.
+- **Sem seção de "o que mudou", tabela de componentes, cobertura por
+  arquivo ou ordem de revisão.** Dependência nova ou com major bump entra
+  como risco; arquivo de lógica sem teste entra como problema.
+- **Sem título, autor nem contagem de arquivos.** O GitHub já mostra isso
+  no PR.
+- **Sem ícones.**
+- O resumo não é um veredito. Não aprove nem rejeite o PR.
+
+### 6. Publique no PR (opcional)
+
+Depois de mostrar o resumo, ofereça colocá-lo na descrição do PR. Só
+publique com o OK explícito do usuário:
+
+1. Leia a descrição atual com `gh pr view <n> --json body`.
+2. Se ela estiver vazia, use o resumo como descrição. Se já tiver texto,
+   pergunte se o resumo substitui o texto ou entra depois dele.
+3. Grave o texto num arquivo temporário e rode
+   `gh pr edit <n> --body-file <arquivo>`.
 
 ## Pré-requisitos
 
 - `git`.
-- `gh` (GitHub CLI), opcional — só para descobrir a branch base de um PR ou
-  achar a branch a partir de uma descrição em linguagem natural.
+- `gh` (GitHub CLI), opcional — para resolver um PR pelo número, descobrir
+  a branch base, achar a branch a partir de uma descrição em linguagem
+  natural e publicar o resumo na descrição do PR.
 
 ## Referência rápida dos scripts
 
@@ -190,7 +164,9 @@ Cobertura no diff: **<n> de <n>** arquivos de lógica.
   — resolve as duas branches (preferindo `origin/`), calcula o merge-base e
   imprime os fatos brutos do diff. Somente leitura. `--dir` aponta o
   repositório ou worktree onde operar (padrão: diretório atual);
-  `--no-fetch` pula a atualização do remoto.
+  `--no-fetch` pula a atualização do remoto. Aceita SHA e expressões como
+  `abc1234^1` no lugar de branch. Com a branch já mergeada, aponta o merge
+  commit em `para_comparar`.
 - `tests/run-tests.sh` — testa o script de coleta em um repositório
-  temporário (seções, somente leitura, sem temporários). Rode
+  temporário (seções, sinalizadores, branch mergeada, somente leitura, sem temporários). Rode
   `bash tests/run-tests.sh` após alterá-lo.

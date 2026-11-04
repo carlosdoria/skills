@@ -77,6 +77,15 @@ fi
 if [[ "$MERGE_BASE" == "$PR_HEAD" ]]; then
   echo "=== META ==="
   echo "aviso: '$FEATURE_BRANCH' não tem nenhum commit à frente de '$BASE_BRANCH'."
+  # Branch já mergeada: o merge commit mais antigo no caminho até a base é o
+  # que trouxe a branch. Comparar o primeiro pai com ele reproduz o diff do PR.
+  MERGE_COMMIT="$(g log --ancestry-path --merges --format=%H "${PR_HEAD}..${BASE_SHA}" | tail -1)"
+  if [[ -n "$MERGE_COMMIT" ]]; then
+    echo "merge_commit: $MERGE_COMMIT"
+    echo "para_comparar: ${MERGE_COMMIT:0:7}^1 ${MERGE_COMMIT:0:7}"
+  elif [[ "$PR_HEAD" != "$BASE_SHA" ]]; then
+    echo "merge_commit: (nenhum; a branch entrou por fast-forward)"
+  fi
   echo "=== FIM ==="
   exit 0
 fi
@@ -125,14 +134,19 @@ g diff --numstat -M "$MERGE_BASE" "$PR_HEAD" \
 echo
 echo "=== SINALIZADORES (arquivos sensiveis tocados) ==="
 g diff --name-only -M "$MERGE_BASE" "$PR_HEAD" | while IFS= read -r f; do
+  # Tipo do arquivo: um só, do mais específico para o mais genérico, então
+  # lockfile/CI precisam vir antes de configuração (*.yml, *.yaml).
   case "$f" in
-    # Do mais específico para o mais genérico: o primeiro padrão que casa vence,
-    # então lockfile/CI precisam vir antes de configuração (*.yml, *.yaml).
     package-lock.json|pnpm-lock.yaml|*.lock|bun.lockb|go.sum) echo "lockfile: $f" ;;
     .github/*|*Dockerfile*|*docker-compose*)            echo "ci_ou_infra: $f" ;;
     *migration*|*.sql)                                  echo "migracao_ou_sql: $f" ;;
     .env*|*.env|*config*|*.yml|*.yaml|*.toml|*.ini)     echo "configuracao: $f" ;;
+  esac
+  # Assunto: independe do tipo (auth.config.ts é configuração e autenticação).
+  case "$f" in
     *auth*|*Auth*|*permission*|*Permission*|*token*)    echo "auth_ou_permissao: $f" ;;
+  esac
+  case "$f" in
     *webhook*|*Webhook*)                                echo "endpoint_publico: $f" ;;
   esac
 done
