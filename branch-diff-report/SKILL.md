@@ -1,6 +1,6 @@
 ---
 name: branch-diff-report
-description: Compara duas branches Git quaisquer e gera um relatório de revisão em Markdown a partir do diff — o que mudou e por quê, áreas do sistema afetadas, pontos de atenção classificados por risco, componentes alterados, arquivos sem cobertura de teste, mudanças de dependência e ordem sugerida de revisão. Funciona em qualquer repositório, sem worktree e sem alterar nada. Use sempre que o usuário pedir para comparar duas branches, ver o que mudou entre uma branch e outra, resumir ou analisar um PR, gerar relatório ou review de um diff, ou perguntar o que uma branch traz em relação à base, mesmo que não use as palavras relatório, diff ou o nome exato do comando.
+description: Compara duas branches Git quaisquer e gera um relatório de revisão em Markdown a partir do diff — pontos de atenção classificados por risco, tudo o que mudou agrupado por área do sistema, componentes alterados, arquivos sem cobertura de teste, mudanças de dependência e ordem sugerida de revisão. Funciona em qualquer repositório, sem worktree e sem alterar nada. Use sempre que o usuário pedir para comparar duas branches, ver o que mudou entre uma branch e outra, resumir ou analisar um PR, gerar relatório ou review de um diff, ou perguntar o que uma branch traz em relação à base, mesmo que não use as palavras relatório, diff ou o nome exato do comando.
 ---
 
 # Branch Diff Report
@@ -47,23 +47,34 @@ componentes/hooks com contagem de consumidores.
 
 Ele não classifica risco nem escreve texto — isso é trabalho seu.
 
-### 2. Interprete
+### 3. Interprete
 
-As heurísticas do script são um ponto de partida, não a verdade. Antes de
-escrever, abra os arquivos que importam:
+As heurísticas do script são um ponto de partida, não a verdade. O
+relatório precisa contar ao revisor **tudo** o que o PR muda, então leia
+antes de escrever:
 
-- **Leia o diff dos arquivos de maior risco** antes de afirmar qualquer
-  coisa sobre eles. Um webhook sinalizado como "endpoint público" pode já
-  ter validação de assinatura — verifique em vez de repetir a heurística.
+- **Leia o diff de cada arquivo** listado em `=== ARQUIVOS ===`. Lockfiles
+  e arquivos gerados não pedem leitura linha a linha: entram como um
+  bullet só. Os arquivos de maior risco pedem leitura atenta antes de
+  qualquer afirmação. Um webhook sinalizado como "endpoint público" pode
+  já ter validação de assinatura — verifique em vez de repetir a
+  heurística.
 - **Agrupe por área do sistema**, não por pasta. "Checkout (UI)" e
   "Pagamentos (core)" dizem mais ao revisor do que `src/components/`.
+  Arquivos de teste entram na área do código que testam.
 - **Descreva a intenção do PR em linguagem humana**, a partir dos commits
   e do diff, não do título da branch.
 - **Só afirme o que você verificou.** Se não conseguiu determinar algo
   (ex.: quem consome um componente), diga que não foi verificado em vez de
-  chutar. Melhor uma linha a menos do que uma linha errada.
+  chutar. Melhor uma linha a menos do que uma linha errada. Um arquivo que
+  você não leu (PR muito grande) aparece como `não lido: <caminho>` na
+  área dele, nunca descrito pelo nome.
 
-### 3. Classifique o risco
+O passo termina quando **cada arquivo de `=== ARQUIVOS ===` está em
+exatamente uma área** e a soma dos arquivos por área bate com o total do
+cabeçalho.
+
+### 4. Classifique o risco
 
 | Nível | Critério |
 |---|---|
@@ -71,10 +82,11 @@ escrever, abra os arquivos que importam:
 | Médio | Mudança de contrato interno, config/env nova, dependência atualizada com major bump, alteração em código compartilhado sem teste |
 | Baixo | UI sem lógica nova, renomeações, texto, testes, documentação |
 
-Se nada se enquadrar em Alto ou Médio, diga isso explicitamente em vez de
-inflar a tabela para parecer completa.
+A tabela vai de Alto para Médio e depois Baixo. Se nada se enquadrar em
+Alto ou Médio, diga isso explicitamente em vez de inflar a tabela para
+parecer completa.
 
-### 4. Escreva o relatório
+### 5. Escreva o relatório
 
 Mostre o relatório na conversa. Se o usuário pedir um arquivo, salve como
 `PR-REVIEW.md` na raiz do repositório onde a comparação foi feita. Use este
@@ -86,15 +98,8 @@ lugar:
 
 **Branch base:** `<base>` · **Autor:** <autor> · **Commits:** <n>
 **<n> arquivos** alterados · `+<n>` / `−<n>`
----
 
-## O que este PR faz
-
-<2 a 4 linhas em linguagem humana: o que muda e por quê.>
-
-| Área | Arquivos | O que mudou |
-|---|---|---|
-| <área do sistema> | <n> | <uma frase> |
+<1 a 2 linhas em linguagem humana: o que o PR faz e por quê.>
 
 ---
 
@@ -103,6 +108,14 @@ lugar:
 | Risco | Onde | Por quê |
 |---|---|---|
 | Alto/Médio/Baixo | `<caminho>` | <motivo concreto e verificado> |
+
+---
+
+## O que mudou
+
+### <Área do sistema> · <n> arquivos
+
+- <Verbo> <mudança concreta, em linguagem humana> — `<caminho>`, `<caminho>`
 
 ---
 
@@ -139,16 +152,27 @@ Cobertura no diff: **<n> de <n>** arquivos de lógica.
 1. `<caminho>` — <por que começar aqui>
 ````
 
+### A seção O que mudou
+
+- **Um bullet por mudança**, não por arquivo. Arquivos que implementam a
+  mesma mudança vão no mesmo bullet.
+- **O bullet começa pelo verbo** que diz a natureza da mudança: Adiciona,
+  Altera, Remove, Renomeia, Move, Refatora (sem mudar comportamento).
+  Remoções, renomeações e mudanças de contrato aparecem sempre explícitas:
+  são elas que quebram quem consome o código.
+- **As áreas com mudança de comportamento vêm primeiro**; build, CI e
+  documentação, por último.
+
 ### Regras de formatação
 
 - **Seções vazias são omitidas**, não preenchidas com "nenhum". Se o PR
   não mexe em dependências, a seção `📦 Dependências` simplesmente não
-  aparece.
+  aparece. A exceção é `⚠️ Pontos de atenção`, que sempre aparece (passo 4).
 - **Ícones com moderação**: só os três já previstos no modelo. Nenhum
   ícone em tabelas, listas ou corpo de texto.
 - **Diffs pequenos** (menos de ~5 arquivos ou só texto/config) recebem uma
-  versão curta: cabeçalho, "O que este PR faz" e "Pontos de atenção".
-  Não force o formato completo.
+  versão curta: cabeçalho com o objetivo, "Pontos de atenção" e "O que
+  mudou", ainda com todos os arquivos. Não force o formato completo.
 - **A ordem sugerida de revisão vai do maior risco ao menor**, não da
   maior pasta à menor.
 - O relatório é um mapa para o revisor humano, não um veredito. Não
