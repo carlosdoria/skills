@@ -59,6 +59,16 @@ na base. Quando houver `para_comparar`, rode o script de novo com os dois
 valores dessa linha, sem perguntar. Sem merge commit (fast-forward), diga
 isso ao usuário e peça o intervalo de commits.
 
+Leia também as regras e a spec do projeto, na versão da branch comparada
+(`git show <pr_head>:<caminho>`), sem depender do que está em disco:
+
+- **Regras:** o que existir entre `AGENTS.md`, `CLAUDE.md` e
+  `docs/rules/*.md`. Uma violação vira Problema e cita a regra.
+- **Spec:** `.specs/features/<feature>/spec.md` da feature tocada, ou a
+  issue ligada ao PR (`gh pr view <n> --json closingIssuesReferences`).
+  Com spec, o resumo ganha a linha `**Spec:**` com os critérios atendidos e
+  os pendentes. Num PR parcial, não cobre os critérios de prioridade baixa.
+
 ### 3. Interprete
 
 O relatório é um **resumo** para o revisor: o que pode quebrar, o que está
@@ -68,7 +78,13 @@ do script são um ponto de partida, não a verdade:
 - **Leia o diff dos arquivos que podem render um achado**: os sinalizados
   pelo script, os de lógica com mais linhas alteradas e os que mudam
   contrato (tipos, DTOs, rotas, schemas). Lockfiles, arquivos gerados e
-  mudanças só de texto não pedem leitura.
+  mudanças só de texto não pedem leitura. Quando o diff sozinho não mostra
+  o contexto, leia o arquivo inteiro.
+- **Procure Problemas com estas lentes**, em cada arquivo lido:
+  - caso de borda não tratado (null, lista vazia, erro de rede, corrida);
+  - estado de erro ou de carregamento faltando;
+  - erro tratado na camada errada, longe de onde pode ser resolvido;
+  - complexidade além do que a mudança pede.
 - **Use a contagem de consumidores** de `=== COMPONENTES ===`: componente
   ou hook com contrato alterado e muitos consumidores pesa mais no risco do
   que um usado em um lugar só.
@@ -78,6 +94,10 @@ do script são um ponto de partida, não a verdade:
   ele não entra no relatório.
 - **Só afirme o que você verificou.** Melhor um achado a menos do que um
   achado errado.
+- **PR grande (mais de ~30 arquivos):** anote cada achado confirmado num
+  arquivo de trabalho no scratchpad assim que confirmá-lo, com seção,
+  caminho e texto final. Monte o resumo a partir desse arquivo, para nada
+  se perder se o contexto for compactado.
 
 ### 4. Classifique os achados
 
@@ -85,11 +105,11 @@ Cada achado vai para exatamente uma seção:
 
 | Seção | O que entra |
 |---|---|
-| Riscos | O que pode quebrar em produção ou para quem consome o código, mesmo que o código esteja certo |
+| Pontos de atenção | O que pode quebrar em produção ou para quem consome o código, mesmo que o código esteja certo |
 | Problemas | Defeito concreto encontrado no diff: bug, caso não tratado, código sem teste, tipo inseguro, commit com tipo errado |
 | Melhorias | Sugestão opcional que não bloqueia o merge |
 
-Os riscos levam um nível:
+Os pontos de atenção levam um nível de risco:
 
 | Nível | Critério |
 |---|---|
@@ -97,39 +117,49 @@ Os riscos levam um nível:
 | Médio | Mudança de contrato interno, config/env nova, dependência atualizada com major bump, alteração em código compartilhado sem teste |
 | Baixo | Mudança de comportamento em fluxo isolado, com teste |
 
+Um problema **bloqueia o merge** quando dá para descrever o cenário
+concreto (entrada ou situação → falha) e ele acontece no uso normal:
+
+- bug verificado no fluxo principal (crash, exceção não tratada, tela
+  quebrada com dado que existe em produção);
+- falha de segurança (segredo no commit, rota sem autenticação, validação
+  ou permissão removida, injeção);
+- perda ou corrupção de dados (migração destrutiva sem volta, gravação de
+  dado errado);
+- contrato removido ou renomeado com consumidor fora do PR, confirmado por
+  `grep`;
+- violação de regra que o projeto marca como obrigatória ("nunca",
+  "sempre").
+
+Não bloqueiam: falta de teste (salvo regra do projeto), tipo inseguro sem
+cenário de falha, estilo, duplicação, mensagem de commit e risco
+hipotético. Na dúvida, não bloqueia: um bloqueio errado tira a confiança
+no resumo. Um ponto de atenção Alto também não bloqueia por si só; o
+bloqueio exige um defeito confirmado.
+
 ### 5. Escreva o resumo
 
 O texto vai para a descrição do PR, lida por quem revisa. Mostre-o na
 conversa dentro de um bloco ` ```markdown `, para o usuário copiar sem
 perder a formatação. Se o usuário pedir um arquivo, salve como
-`PR-REVIEW.md` na raiz do repositório onde a comparação foi feita. Use este
-formato:
+`PR-REVIEW.md` na raiz do repositório onde a comparação foi feita.
 
-````markdown
-## Resumo
-
-<1 a 2 linhas em linguagem humana: o que o PR faz e por quê.>
-
-## Riscos
-
-- **Alto/Médio/Baixo** · <o que pode quebrar e quando> — `<caminho>`
-
-## Problemas
-
-- <defeito concreto> — `<caminho>`
-
-## Melhorias
-
-- <sugestão> — `<caminho>`
-````
+Siga o modelo em `templates/pr-description.md`.
 
 ### Regras de formatação
 
-- **Um achado por bullet, em uma ou duas linhas.** Diga o que é e onde;
-  não descreva o diff nem explique como o código funciona.
-- **Riscos vão de Alto para Baixo.** Se não houver risco Alto ou Médio,
-  escreva isso numa linha em vez de inflar a lista.
-- **Seções vazias são omitidas.** A exceção é Riscos, que sempre aparece.
+- **Um achado por linha da tabela ou por bullet, em uma ou duas linhas.**
+  Diga o que é e onde; não descreva o diff nem explique como o código
+  funciona.
+- **Pontos de atenção vão de Alto para Baixo.** Se não houver risco Alto ou
+  Médio, escreva isso numa linha abaixo da tabela em vez de inflá-la.
+- **Problemas são checklist** (`- [ ]`): no GitHub, quem cuida do PR marca
+  cada um ao resolver, e a lista de PRs mostra o progresso. Os que
+  bloqueiam o merge (passo 4) vêm primeiro, com o prefixo
+  `**Bloqueia o merge:**`.
+- **Seções vazias são omitidas.** A exceção é Pontos de atenção, que sempre aparece.
+  A linha `**Spec:**` só aparece quando há spec (passo 2).
+- **Até ~250 palavras no total**, escritas para quem lê o PR sem contexto.
 - **No máximo uns 5 itens por seção.** Se houver mais, fique com os mais
   importantes e diga quantos ficaram de fora.
 - **Sem seção de "o que mudou", tabela de componentes, cobertura por
@@ -151,12 +181,16 @@ publique com o OK explícito do usuário:
 3. Grave o texto num arquivo temporário e rode
    `gh pr edit <n> --body-file <arquivo>`.
 
+O PR é o único destino. Não cole o diff nem os achados em serviço externo,
+gist, pastebin ou Artifact, e não ofereça um link compartilhável do resumo.
+
 ## Pré-requisitos
 
 - `git`.
 - `gh` (GitHub CLI), opcional — para resolver um PR pelo número, descobrir
   a branch base, achar a branch a partir de uma descrição em linguagem
-  natural e publicar o resumo na descrição do PR.
+  natural, achar a issue ligada ao PR e publicar o resumo na descrição do
+  PR.
 
 ## Referência rápida dos scripts
 
@@ -167,6 +201,7 @@ publique com o OK explícito do usuário:
   `--no-fetch` pula a atualização do remoto. Aceita SHA e expressões como
   `abc1234^1` no lugar de branch. Com a branch já mergeada, aponta o merge
   commit em `para_comparar`.
+- `templates/pr-description.md` — modelo do resumo.
 - `tests/run-tests.sh` — testa o script de coleta em um repositório
   temporário (seções, sinalizadores, branch mergeada, somente leitura, sem temporários). Rode
   `bash tests/run-tests.sh` após alterá-lo.
