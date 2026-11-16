@@ -37,6 +37,9 @@ jobs:
       - name: pr-worktree
         run: bash pr-worktree/tests/run-tests.sh
 
+      - name: plan-and-execute
+        run: bash plan-and-execute/tests/run-tests.sh
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest

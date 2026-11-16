@@ -7,6 +7,7 @@ Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 | Skill | Descrição |
 | --- | --- |
 | [`branch-diff-report`](branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão a partir do diff. |
+| [`plan-and-execute`](plan-and-execute/SKILL.md) | Processo operacional para tarefas não triviais: entender, desenhar com aprovação, planejar, executar e verificar com evidência. |
 | [`pr-worktree`](pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
 
 ## Instalação
@@ -53,6 +54,9 @@ skills/
 ├── branch-diff-report/
 │   ├── SKILL.md
 │   ├── scripts/
+│   └── tests/
+├── plan-and-execute/
+│   ├── SKILL.md
 │   └── tests/
 └── pr-worktree/
     ├── SKILL.md
