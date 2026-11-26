@@ -110,8 +110,12 @@ Cada achado vai para exatamente uma seção:
 | Seção | O que entra |
 |---|---|
 | Pontos de atenção | O que pode quebrar em produção ou para quem consome o código, mesmo que o código esteja certo |
-| Problemas | Defeito concreto encontrado no diff: bug, caso não tratado, código sem teste, tipo inseguro, commit com tipo errado |
+| Problemas | Defeito concreto encontrado no diff: bug, caso não tratado, código sem teste, tipo inseguro |
 | Melhorias | Sugestão opcional que não bloqueia o merge |
+
+Os achados tratam do código. Mensagem, tipo (`feat`, `fix`, `refactor`)
+e organização dos commits não entram em nenhuma seção: os commits servem
+só para entender a intenção do PR.
 
 Os pontos de atenção levam um nível de risco:
 
@@ -136,8 +140,7 @@ concreto (entrada ou situação → falha) e ele acontece no uso normal:
   "sempre").
 
 Não bloqueiam: falta de teste (salvo regra do projeto), tipo inseguro sem
-cenário de falha, estilo, duplicação, mensagem de commit e risco
-hipotético. Na dúvida, não bloqueia: um bloqueio errado tira a confiança
+cenário de falha, estilo, duplicação e risco hipotético. Na dúvida, não bloqueia: um bloqueio errado tira a confiança
 no resumo. Um ponto de atenção Alto também não bloqueia por si só; o
 bloqueio exige um defeito confirmado.
 
