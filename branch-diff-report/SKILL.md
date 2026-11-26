@@ -1,24 +1,20 @@
 ---
 name: branch-diff-report
-description: Compara duas branches Git quaisquer e gera um resumo em Markdown pronto para a descrição do PR — riscos classificados por nível, problemas encontrados e melhorias sugeridas. Funciona em qualquer repositório, sem worktree e sem alterar nada. Use sempre que o usuário pedir para comparar duas branches, ver o que mudou entre uma branch e outra, resumir ou analisar um PR, escrever a descrição de um PR, gerar relatório ou review de um diff, ou perguntar o que uma branch traz em relação à base, mesmo que não use as palavras relatório, diff ou o nome exato do comando.
+description: Compara duas branches Git e gera um resumo em Markdown para a descrição do PR, com riscos por nível, problemas e melhorias. Somente leitura, em qualquer repositório. Use quando o usuário pedir para comparar duas branches, ver o que uma branch traz em relação à base, resumir, analisar ou revisar um PR ou um diff, ou escrever a descrição de um PR, mesmo sem dizer "relatório" ou "diff".
 ---
 
 # Branch Diff Report
 
 Compara duas branches e escreve um resumo em Markdown para a descrição do
 PR. Do lado do Git é **somente leitura**: não cria worktree, não muda de
-branch, não altera refs nem o working tree. Serve para qualquer repositório
-Git. A única escrita possível é a descrição do PR no GitHub, e só com o
-OK do usuário (passo 6).
+branch, não altera refs nem o working tree. A única escrita possível é a
+descrição do PR no GitHub, e só com o OK do usuário (passo 6).
 
-A coleta de dados está resolvida no script em `scripts/`. **Nunca
-reimplemente essa lógica na mão** — sempre delegue para o script. O papel
-desta skill é a camada de julgamento em volta dele: interpretar os fatos,
-separar riscos, problemas e melhorias, escrever o resumo.
-
-Outras skills (validação de PR com ou sem worktree) chamam esta aqui para a
-parte do relatório. Quando for esse o caso, use `--dir` para apontar ao
-diretório certo.
+A coleta de dados está no script em `scripts/`. **Nunca reimplemente essa
+lógica na mão.** O papel desta skill é o julgamento em volta dele:
+interpretar os fatos, separar riscos, problemas e melhorias, escrever o
+resumo. Quando outra skill chama esta para o relatório, use `--dir` para
+apontar o diretório certo.
 
 ## Fluxo
 
@@ -42,17 +38,18 @@ diretório certo.
 bash scripts/collect-branch-facts.sh <base-branch> <feature-branch> [--dir <caminho>] [--no-fetch]
 ```
 
-A comparação sempre parte do **merge-base** entre as duas, não da ponta da
-base — assim commits que entraram na base depois que a feature saiu não
-poluem o diff.
+`--dir` aponta o repositório ou worktree (padrão: diretório atual);
+`--no-fetch` pula a atualização do remoto. Aceita SHA e expressões como
+`abc1234^1` no lugar de branch. A comparação parte do **merge-base**, não
+da ponta da base, para que commits que entraram na base depois não poluam
+o diff.
 
-O script devolve **apenas dados brutos e verificáveis**, em seções
-delimitadas por `=== NOME ===`: metadados, autores, commits, totais, lista
-de arquivos com status e +/-, arquivos mais alterados, sinalizadores de
-arquivos sensíveis, diff dos manifestos de dependência, testes no diff e
-componentes/hooks com contagem de consumidores.
-
-Ele não classifica risco nem escreve texto — isso é trabalho seu.
+O script devolve só dados brutos, em seções `=== NOME ===`: metadados,
+commits (até 30), totais, arquivos com status e +/- do mais alterado ao
+menos (até 50; binários e lockfiles viram uma linha de contagem),
+sinalizadores de arquivos sensíveis, diff dos manifestos de dependência,
+testes no diff e componentes/hooks com contagem de consumidores. Classificar
+risco e escrever o texto é trabalho seu.
 
 Se a saída tiver só o `aviso` de nenhum commit à frente, a branch já entrou
 na base. Quando houver `para_comparar`, rode o script de novo com os dois
@@ -62,8 +59,13 @@ isso ao usuário e peça o intervalo de commits.
 Leia também as regras e a spec do projeto, na versão da branch comparada
 (`git show <pr_head>:<caminho>`), sem depender do que está em disco:
 
-- **Regras:** o que existir entre `AGENTS.md`, `CLAUDE.md` e
-  `docs/rules/*.md`. Uma violação vira Problema e cita a regra.
+- **Regras:** o `CLAUDE.md` da raiz já está no seu contexto quando a sessão
+  roda dentro do repositório comparado; releia só se ele aparecer em
+  `regras_do_projeto` (mudou no diff) ou se `--dir` aponta para outro
+  repositório. Leia o `AGENTS.md`, se existir. De `docs/rules/`, liste os
+  nomes (`git ls-tree --name-only <pr_head> docs/rules/`) e leia só as
+  regras das áreas que o diff toca. Uma violação vira Problema e cita a
+  regra.
 - **Spec:** `.specs/features/<feature>/spec.md` da feature tocada, ou a
   issue ligada ao PR (`gh pr view <n> --json closingIssuesReferences`).
   Com spec, o resumo ganha a linha `**Spec:**` com os critérios atendidos e
@@ -78,8 +80,10 @@ do script são um ponto de partida, não a verdade:
 - **Leia o diff dos arquivos que podem render um achado**: os sinalizados
   pelo script, os de lógica com mais linhas alteradas e os que mudam
   contrato (tipos, DTOs, rotas, schemas). Lockfiles, arquivos gerados e
-  mudanças só de texto não pedem leitura. Quando o diff sozinho não mostra
-  o contexto, leia o arquivo inteiro.
+  mudanças só de texto não pedem leitura. Peça os escolhidos numa chamada
+  só: `git diff <merge_base> <pr_head> -- <arquivo> <arquivo> ...`. Quando o
+  diff não mostra o contexto, aumente-o só naquele arquivo (`-U30`) antes
+  de ler o arquivo inteiro.
 - **Procure Problemas com estas lentes**, em cada arquivo lido:
   - caso de borda não tratado (null, lista vazia, erro de rede, corrida);
   - estado de erro ou de carregamento faltando;
@@ -173,35 +177,11 @@ Siga o modelo em `templates/pr-description.md`.
 ### 6. Publique no PR (opcional)
 
 Depois de mostrar o resumo, ofereça colocá-lo na descrição do PR. Só
-publique com o OK explícito do usuário:
-
-1. Leia a descrição atual com `gh pr view <n> --json body`.
-2. Se ela estiver vazia, use o resumo como descrição. Se já tiver texto,
-   pergunte se o resumo substitui o texto ou entra depois dele.
-3. Grave o texto num arquivo temporário e rode
-   `gh pr edit <n> --body-file <arquivo>`.
+publique com o OK explícito do usuário e, antes, leia
+`references/publicar-no-pr.md`.
 
 O PR é o único destino. Não cole o diff nem os achados em serviço externo,
 gist, pastebin ou Artifact, e não ofereça um link compartilhável do resumo.
 
-## Pré-requisitos
-
-- `git`.
-- `gh` (GitHub CLI), opcional — para resolver um PR pelo número, descobrir
-  a branch base, achar a branch a partir de uma descrição em linguagem
-  natural, achar a issue ligada ao PR e publicar o resumo na descrição do
-  PR.
-
-## Referência rápida dos scripts
-
-- `scripts/collect-branch-facts.sh <base-branch> <feature-branch> [--dir <caminho>] [--no-fetch]`
-  — resolve as duas branches (preferindo `origin/`), calcula o merge-base e
-  imprime os fatos brutos do diff. Somente leitura. `--dir` aponta o
-  repositório ou worktree onde operar (padrão: diretório atual);
-  `--no-fetch` pula a atualização do remoto. Aceita SHA e expressões como
-  `abc1234^1` no lugar de branch. Com a branch já mergeada, aponta o merge
-  commit em `para_comparar`.
-- `templates/pr-description.md` — modelo do resumo.
-- `tests/run-tests.sh` — testa o script de coleta em um repositório
-  temporário (seções, sinalizadores, branch mergeada, somente leitura, sem temporários). Rode
-  `bash tests/run-tests.sh` após alterá-lo.
+Sem o `gh` (GitHub CLI), peça ao usuário as duas branches e não ofereça
+publicar.
