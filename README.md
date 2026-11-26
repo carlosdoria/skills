@@ -53,29 +53,45 @@ para ela. Depois do merge, rode de novo a partir da `main`.
 skills/
 ├── branch-diff-report/
 │   ├── SKILL.md
+│   ├── references/
 │   ├── scripts/
+│   ├── templates/
 │   └── tests/
 ├── plan-and-execute/
 │   ├── SKILL.md
 │   └── tests/
 └── pr-worktree/
     ├── SKILL.md
+    ├── references/
     ├── scripts/
     └── tests/
 ```
 
+O `SKILL.md` fica com o que todo uso precisa; o que só alguns pedidos usam
+vai para `references/`, lido sob demanda, para gastar menos tokens.
+
 ## Requisitos
 
 - Bash
-- Git
+- Git (>= 2.17 para a `pr-worktree`, que usa `git worktree remove`)
 - Claude Code
 
-O `gh` (GitHub CLI) é usado pelas skills que precisam consultar PRs no GitHub.
+O `gh` (GitHub CLI), autenticado, é usado para consultar PRs no GitHub:
+detectar a branch base, achar um PR por descrição e publicar o resumo. Sem
+ele, as skills pedem as branches ao usuário.
 
 ## Testes e CI
 
-Cada skill tem seus testes em `<skill>/tests/run-tests.sh`; o instalador tem
-`tests/test-install.sh`. O workflow `.github/workflows/tests.yml` roda tudo em
+Cada skill tem seus testes em `<skill>/tests/run-tests.sh`, em repositórios
+temporários; rode-os depois de alterar os scripts:
+
+- `branch-diff-report`: seções e limites da saída, sinalizadores, branch
+  mergeada, somente leitura, sem temporários.
+- `pr-worktree`: segurança do prepare/cleanup (repositório comum e layout
+  bare) e o `manage-worktree.sh` (`tests/manage-worktree-tests.sh`, que
+  também roda sozinho).
+
+O instalador tem `tests/test-install.sh`. O workflow `.github/workflows/tests.yml` roda tudo em
 cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
 `shellcheck` (`-S warning`) também precisa passar.
 

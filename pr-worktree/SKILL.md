@@ -1,334 +1,112 @@
 ---
 name: pr-worktree
-description: Gerencia worktrees Git de um projeto no padrão bare + worktree por branch (nenhuma branch, nem a main, fica com checkout direto na raiz) — clona um repositório novo já nesse formato, converte um repositório existente para ele, cria uma worktree nova com branch nova a partir de uma base, lista as ativas, atualiza por fast-forward e remove com segurança — e também prepara e limpa worktrees descartáveis para revisar, rodar e testar um Pull Request sem tocar na branch original nem no diretório de trabalho do usuário. Funciona em qualquer repositório Git, com ou sem setup prévio de worktrees. Use sempre que o usuário pedir para clonar um repositório, criar, abrir, listar, atualizar ou remover uma worktree, uma branch ou uma pasta de trabalho, pedir uma worktree a partir de outra ou baseada em outra, ou pedir para revisar, validar, testar ou rodar um PR localmente e depois finalizar e limpar essa validação, mesmo que não use a palavra worktree nem o nome exato do comando. Para o relatório escrito da revisão, esta skill delega para a skill branch-diff-report.
+description: Gerencia worktrees Git no padrão bare + worktree por branch — clona um repositório já nesse formato, converte um existente, cria worktree com branch nova a partir de uma base ou de outra worktree, lista, atualiza e remove com segurança. Também prepara e limpa worktrees descartáveis para revisar, rodar e testar um PR localmente. Use quando o usuário pedir para clonar um repositório, criar, abrir, listar, atualizar ou remover uma worktree, branch ou pasta de trabalho, ou revisar, testar ou rodar um PR localmente, mesmo sem dizer "worktree".
 ---
 
 # PR Worktree
 
-Cuida de worktrees Git em dois usos que têm ciclos de vida diferentes:
+Cuida de worktrees Git em dois usos com ciclos de vida diferentes:
 
-- **Worktrees de desenvolvimento** — vida longa, branch de verdade, onde se
-  escreve código. Criar, listar, atualizar, remover.
-- **Worktrees de validação de PR** — descartáveis, em HEAD *detached*, para
-  revisar e testar um Pull Request com o diff inteiro aparecendo como
-  alteração não commitada, sem tocar na branch original nem no diretório de
-  trabalho do usuário.
+- **Desenvolvimento** — vida longa, branch de verdade, onde se escreve
+  código. Criar, listar, atualizar, remover (abaixo).
+- **Validação de PR** — descartável, em HEAD *detached*, com o diff inteiro
+  do PR aparecendo como alteração não commitada, sem tocar na branch
+  original nem no diretório de trabalho do usuário.
 
 Nunca trate um como o outro: worktree de PR não se atualiza (se recria), e
 worktree de desenvolvimento não se descarta sem checar trabalho não salvo.
 
-Toda a lógica de Git (fetch, merge-base, `worktree add`, `reset`, remoção)
-já está resolvida nos scripts em `scripts/`. **Nunca reimplemente essa
-lógica na mão** — sempre delegue para os scripts. O papel desta skill é a
-camada de julgamento em volta deles: entender o pedido em linguagem natural,
-resolver ambiguidades, resumir resultados.
+Toda a lógica de Git está nos scripts em `scripts/`. **Nunca reimplemente
+essa lógica na mão.** O papel desta skill é o julgamento em volta deles:
+entender o pedido, resolver ambiguidades, resumir resultados. Quando um
+script recusa, a mensagem diz o motivo: mostre-a ao usuário e leve a
+decisão a ele.
+
+## Antes de agir, leia o arquivo do pedido
+
+| Pedido | Leia antes de rodar qualquer script |
+|---|---|
+| Clonar um repositório; converter um projeto para bare | `references/padrao-bare.md` |
+| Revisar, validar, testar ou rodar um PR; limpar essa validação | `references/validacao-pr.md` |
+| Criar, listar, atualizar ou remover worktree de desenvolvimento | só este arquivo |
+
+Os caminhos `scripts/...` são relativos à pasta desta skill, também nas
+referências.
+
+## Padrão: repositório bare + worktree por branch
+
+Nenhuma branch, nem a `main`, fica com checkout direto na raiz do projeto.
+A raiz é só o repositório bare (`<projeto>/.bare`), e toda branch vive numa
+worktree irmã (`<projeto>/main`, `<projeto>/minha-feature`). Para saber se
+um projeto já é bare, use `git rev-parse --is-bare-repository` ou a saída
+de `list` (seção "REPOSITÓRIO (bare, sem working tree própria)"). Num
+projeto bare, a base para `--from` costuma ser a worktree `<projeto>/main`.
 
 ## Regra: confirmar a pasta antes de criar
 
 Antes de **criar um projeto** (`clone`) ou **uma worktree** (`new`),
-confirme com o usuário em qual pasta isso vai acontecer — **sempre**, mesmo
-que o script tenha um padrão sensato e o pedido pareça óbvio. Só depois de
-ele responder, rode o script.
+confirme com o usuário em qual pasta — **sempre**, mesmo que o padrão do
+script pareça óbvio. Só rode depois da resposta.
 
-- **Mostre o caminho absoluto resolvido**, não "a pasta padrão", e o que
-  será criado ali. Ex.: "Vou clonar em `/Users/x/repos/foo` (cria
-  `foo/.bare` e `foo/main`). Pode ser aí ou prefere outra pasta?"
-  - `clone`: sem `--dir`, o script cria `<pasta atual>/<nome-do-repo>`.
-  - `new`: sem `--dir`, o script cria a worktree como pasta irmã na raiz do
-    projeto (`<raiz do projeto>/<nome-derivado-da-branch>`), que **não é
+- **Mostre o caminho absoluto resolvido** e o que será criado ali. Ex.:
+  "Vou clonar em `/Users/x/repos/foo` (cria `foo/.bare` e `foo/main`). Pode
+  ser aí ou prefere outra pasta?"
+  - `clone` sem `--dir` cria `<pasta atual>/<nome-do-repo>`.
+  - `new` sem `--dir` cria a worktree como pasta irmã na raiz do projeto
+    (`<raiz do projeto>/<nome-derivado-da-branch>`), que **não é
     necessariamente a pasta atual**.
-- **Única exceção:** o usuário deixou claro que é para criar na pasta atual
-  ("aqui", "nesta pasta", "no diretório atual"). Nesse caso não pergunte:
-  crie lá e informe o caminho usado. Para `new`, isso significa passar
-  `--dir "$PWD/<nome-derivado-da-branch>"` (o padrão do script seria a raiz
-  do projeto, que pode ser outra pasta); para `clone`, o padrão do script
-  já é a pasta atual.
-- Qualquer outro jeito de pedir **não** dispensa a confirmação: um pedido
-  genérico ("cria uma worktree pra feature/x") ou um caminho citado de
-  passagem ainda passam pela pergunta.
-- Se o usuário indicar outra pasta, passe-a em `--dir`. No `clone`, `--dir`
-  é a pasta do projeto; no `new`, `--dir` é o caminho da própria worktree
-  (pasta escolhida + nome derivado da branch), não a pasta-pai.
-- A confirmação vale só para o pedido em curso: um novo `clone` ou `new`
-  pergunta de novo.
+- **Única exceção:** o usuário deixou claro que é na pasta atual ("aqui",
+  "nesta pasta", "no diretório atual"). Aí não pergunte: crie e informe o
+  caminho. No `new`, passe `--dir "$PWD/<nome-derivado-da-branch>"`; no
+  `clone`, o padrão já é a pasta atual.
+- Pedido genérico ("cria uma worktree pra feature/x") ou caminho citado de
+  passagem **não** dispensam a pergunta.
+- Outra pasta indicada vai em `--dir`: no `clone`, é a pasta do projeto; no
+  `new`, é o caminho da própria worktree (pasta escolhida + nome derivado
+  da branch), não a pasta-pai.
+- A confirmação vale só para o pedido em curso.
 
-`bootstrap-bare` não entra nessa regra: ele converte em lugar uma pasta de
-projeto que o usuário já indicou. Worktrees de validação de PR também não: o
-`prepare` fixa o caminho (`../pr-review/pr-<branch>`) e não aceita `--dir`.
+`bootstrap-bare` não entra nessa regra (converte em lugar uma pasta que o
+usuário já indicou), nem o worktree de validação de PR (caminho fixo, sem
+`--dir`).
 
-## Padrão: repositório bare + worktree por branch
+## Worktrees de desenvolvimento
 
-**O padrão desta skill é bare.** Nenhuma branch — nem a `main`/`master` —
-deve ficar com checkout direto na raiz do projeto; a raiz é só o
-repositório bare (`<projeto>/.bare`), e toda branch, a começar pela
-padrão, vive numa worktree irmã dentro dessa mesma pasta
-(`<projeto>/main`, `<projeto>/minha-feature`, ...). Isso evita o problema
-de nunca haver "a" worktree livre para uma branch nova: todas, inclusive a
-principal, seguem a mesma regra.
+Todos os subcomandos: `bash scripts/manage-worktree.sh <subcomando> [args]`.
 
-- **Projeto novo (clonar do zero):**
-  ```bash
-  bash scripts/manage-worktree.sh clone <url> [--dir <destino>] [--branch <nome>]
-  ```
-  Clona direto como bare em `<destino>/.bare` e já cria a worktree da
-  branch padrão do remoto em `<destino>/<branch>`. Sempre que o usuário
-  pedir para clonar um repositório, use isso em vez de `git clone` — depois
-  de confirmar a pasta (regra acima).
-
-- **Projeto já clonado do jeito antigo (checkout direto na raiz):**
-  ```bash
-  bash scripts/manage-worktree.sh bootstrap-bare [<caminho>] [--confirmo-riscos]
-  ```
-  Converte em lugar, criando `.bare` e uma worktree para a branch que
-  estava com checkout. **Recusa se a árvore não estiver limpa** (inclusive
-  arquivos não rastreados), se o caminho for a `$HOME` ou `/`, se houver
-  submódulos ou arquivos `assume-unchanged`/`skip-worktree` — resolva isso
-  com o usuário antes, nunca descarte nada por conta própria. **Nada é
-  apagado:** o conteúdo antigo da raiz vai para `.bootstrap-old.XXXXXX`
-  dentro do projeto e os arquivos ignorados pelo `.gitignore` (`.env`,
-  `node_modules/`, build local, chaves...) são movidos para a worktree
-  nova; se a criação da worktree falhar, tudo volta ao lugar. Como os
-  caminhos do projeto mudam (editor aberto, terminais e scripts que
-  apontavam para a raiz passam a apontar para a worktree), o comando exige
-  `--confirmo-riscos`: sem a flag ele só mostra o aviso, com a lista dos
-  arquivos ignorados que serão movidos, e sai com **código 3** sem mexer em
-  nada. **Mostre o aviso completo ao usuário, sem resumir, e só rode de
-  novo com `--confirmo-riscos` depois que ele confirmar explicitamente que
-  quer reestruturar o projeto** — nunca adicione a flag por conta própria,
-  mesmo com a árvore limpa. Ao terminar, diga onde ficou o
-  `.bootstrap-old.*`; quem apaga é o usuário, depois de conferir a worktree
-  nova.
-
-- **Detectar se um projeto já é bare:** `git rev-parse --is-bare-repository`
-  no caminho, ou olhe a saída de `list` — ela tem uma seção separada
-  "REPOSITÓRIO (bare, sem working tree própria)".
-
-Depois de bare, `new`, `list`, `update` e `remove` funcionam exatamente
-como descrito abaixo, sem nada especial: a base para `--from` costuma ser o
-caminho da worktree `main` (ex.: `<projeto>/main`).
-
-## Fluxo: worktrees de desenvolvimento
-
-Todos os subcomandos são do mesmo script:
-
-```bash
-bash scripts/manage-worktree.sh <subcomando> [args]
-```
-
-### Criar
-
-```bash
-bash scripts/manage-worktree.sh new <nova-branch> [--from <base>] [--dir <caminho>]
-```
-
-`--from` aceita o **caminho de outra worktree** ou um **nome de branch**. A
-base é atualizada por fast-forward antes, para a branch nova não nascer
-atrasada. Sem `--from`, usa a branch padrão do remoto. A worktree é criada
-como pasta irmã da raiz do projeto, com o nome derivado da branch, a menos
-que `--dir` diga outro lugar. **Confirme a pasta com o usuário antes de
-rodar** (regra acima) e, quando ela não for o padrão do script, passe-a em
-`--dir`.
-
-Se o usuário disser algo como "abre uma pasta nova pra feature/abc saindo da
-irop-report", isso é `new feature/abc --from <caminho da irop-report>`.
-
-**Criar a branch não é commitar.** Quando o usuário pedir para criar uma
-branch (ou uma worktree), apenas crie-a. Não faça `git add`, `git commit`,
-`cherry-pick` nem `push`, e não leve arquivos alterados ou novos para a
-branch: eles ficam como estão no working tree, sem commit. Só commite e
-publique quando o usuário pedir isso explicitamente, e nesse caso faça só
-o que foi pedido. Em caso de dúvida sobre o que entra na branch, pergunte.
-
-### Listar
-
-```bash
-bash scripts/manage-worktree.sh list
-```
-
-Separa as de desenvolvimento das de validação de PR e marca as que têm
-alterações não salvas. Use antes de remover qualquer coisa, e sempre que o
-usuário perguntar o que está aberto.
-
-### Atualizar
-
-```bash
-bash scripts/manage-worktree.sh update [<alvo>]
-```
-
-**Somente fast-forward.** Se as pontas divergiram, o script recusa e mostra
-o comando de rebase — mas quem decide rebasear é o usuário, nunca você.
-Sem argumento, atualiza a worktree atual.
-
-### Remover
-
-```bash
-bash scripts/manage-worktree.sh remove <alvo> [--force]
-```
-
-Recusa se houver trabalho não salvo (inclusive se o `git status` falhar: sem
-conseguir provar que está limpa, ela conta como suja), se for uma worktree
-em HEAD detached cujo commit não está em nenhuma branch/tag, se o alvo for a
-worktree principal ou se você estiver dentro dela. No padrão bare, a
-"principal" é a entrada `.bare`: a worktree da branch padrão (`<projeto>/main`)
-**não** é protegida — confirme com o usuário antes de removê-la. A branch
-nunca é apagada junto: o script informa se ela já foi mesclada na branch
-padrão do remoto e deixa o `git branch -d` para o usuário. O `--force` pode
-vir antes ou depois do alvo.
-
-**Antes de usar `--force`, mostre ao usuário o que será perdido** (a saída
-do erro já traz `git status --short`) e peça confirmação explícita. Não
-passe `--force` por iniciativa própria.
-
-`<alvo>` pode ser o caminho da worktree ou o nome da branch.
-
-## Fluxo: preparar um PR para revisão
-
-1. **Descobrir a branch de feature certa.**
-   - Se o usuário já deu o nome da branch, use-o diretamente.
-   - Se ele descreveu o PR em linguagem natural (ex.: "o PR do relatório do
-     capitão"), tente `gh pr list` ou `gh search prs --repo <owner/repo>
-     <termos>` para encontrar a branch correspondente.
-   - Se houver mais de um PR/branch parecido, pergunte qual antes de
-     prosseguir — não adivinhe.
-
-2. **Rodar o script principal:**
-   ```bash
-   bash scripts/prepare-pr-validation.sh <feature-branch> [--base <base-branch>]
-   ```
-   - Se já existir um worktree para o PR, o script só o recria quando ele
-     não tiver edições do usuário além do PR. Com edições (ou sem como
-     verificar, em registros antigos), ele aborta e lista os arquivos;
-     `--force` recria mesmo assim e descarta essas edições.
-   - Deixe o script detectar a branch base sozinho (via `gh`) sempre que
-     possível; só passe `--base` se o script falhar em detectar ou o
-     usuário indicar explicitamente uma base diferente.
-   - O script **não abre nenhum editor**. Ele apenas cria o worktree e
-     imprime o caminho — o usuário escolhe com o que abrir.
-
-3. **Entre no worktree** (`cd <worktree_path>`) e rode dali em diante os
-   comandos de revisão. Informe o caminho ao usuário para que ele abra no
-   editor que preferir. Nunca execute `code`, `cursor`, `idea` ou qualquer
-   outro editor por conta própria — só faça isso se o usuário pedir
-   explicitamente, e com a ferramenta que ele nomear.
-
-4. **Leia a saída do script** (caminho do worktree, branch, base,
-   merge-base) e diga o que o PR muda. Não pare em "worktree criado".
-
-5. Avise que o worktree tem um `CLAUDE.md` na raiz explicando o contexto
-   (HEAD detached, o que pode/não pode fazer ali). Se você mesmo estiver
-   operando dentro desse worktree numa sessão futura, leia esse arquivo
-   primeiro.
-
-6. **Ofereça os próximos passos** em vez de assumir: rodar os testes do
-   projeto, rodar a aplicação, ou aprofundar em algum ponto de atenção do
-   relatório.
-
-## Fluxo: relatório de revisão
-
-**Ao terminar qualquer trabalho neste fluxo** (validar o PR, corrigir algo
-a pedido do usuário, rodar testes), **gere o relatório com a skill
-`branch-diff-report` sem esperar o usuário pedir**, antes de limpar o
-worktree. Se o trabalho mudou a branch (commits novos), gere o relatório
-sobre o estado final. Entregue o relatório e só então ofereça o cleanup.
-
-O relatório escrito não é responsabilidade desta skill. Use a skill
-**`branch-diff-report`**, que compara duas branches e escreve o Markdown.
-
-Passe o worktree recém-criado como diretório de trabalho:
-
-```bash
-bash <caminho-da-skill-branch-diff-report>/scripts/collect-branch-facts.sh \
-  <base-branch> <feature-branch> --dir <worktree_path> --no-fetch
-```
-
-`--no-fetch` porque o `prepare` já atualizou as duas refs. A base e a
-branch estão na saída do `prepare` e no registro
-(`.git/pr-validation/active-worktrees`, no formato
-`branch|base|caminho|merge-base|pr-head`).
-
-Se a skill `branch-diff-report` não estiver disponível, diga isso ao
-usuário em vez de improvisar um relatório próprio — o worktree já entrega
-valor sozinho.
-
-## Fluxo: limpar depois da revisão
-
-0. Se o relatório final ainda não foi gerado nesta sessão, gere-o agora
-   (seção anterior); depois do cleanup o worktree deixa de existir.
-1. Confirme qual PR/worktree limpar. Se só um estiver ativo, use esse; se
-   houver mais de um e o usuário não especificar, rode `git worktree list`,
-   liste as opções e pergunte.
-2. Rode:
-   ```bash
-   bash scripts/cleanup-pr-validation.sh <feature-branch>
-   ```
-   ou, para limpar tudo de uma vez:
-   ```bash
-   bash scripts/cleanup-pr-validation.sh --all
-   ```
-3. O cleanup só remove caminhos registrados pelo `prepare`, recusa o
-   repositório principal e **preserva worktrees com edições do usuário**
-   (arquivos que diferem do commit do PR), saindo com erro e listando-os.
-   Ele nunca usa `rm -rf`: se o Git não conseguir remover, o script aborta.
-   Só use `--force` depois de mostrar ao usuário o que será perdido e ele
-   confirmar.
-4. **Nunca rode o cleanup a partir de dentro do próprio worktree que está
-   sendo removido** — o comando apaga aquele diretório. Rode sempre a
-   partir do repositório principal (no padrão bare, a raiz do projeto, onde
-   fica o `.bare`) ou de outro worktree.
+- **Criar:** `new <nova-branch> [--from <base>] [--dir <caminho>]`.
+  `--from` aceita o caminho de outra worktree ou um nome de branch; a base é
+  atualizada por fast-forward antes. Sem `--from`, usa a branch padrão do
+  remoto. "Abre uma pasta nova pra feature/abc saindo da irop-report" é
+  `new feature/abc --from <caminho da irop-report>`.
+- **Criar a branch não é commitar.** Só crie. Não faça `git add`,
+  `git commit`, `cherry-pick` nem `push`, e não leve arquivos alterados ou
+  novos para a branch: eles ficam como estão, sem commit. Só commite e
+  publique quando o usuário pedir, e só o que foi pedido. Na dúvida sobre o
+  que entra na branch, pergunte.
+- **Listar:** `list`. Separa a entrada bare, o desenvolvimento e a
+  validação de PR, e marca alterações não salvas. Use antes de remover e
+  quando perguntarem o que está aberto.
+- **Atualizar:** `update [<alvo>]` (sem alvo, a worktree atual). Só
+  fast-forward: se as pontas divergiram, o script recusa e mostra o comando
+  de rebase, mas quem decide rebasear é o usuário.
+- **Remover:** `remove <alvo> [--force]`, com `<alvo>` sendo o caminho ou o
+  nome da branch. O script protege trabalho não salvo e nunca apaga a
+  branch (diz se ela já foi mesclada e deixa o `git branch -d` para o
+  usuário). A worktree da branch padrão (`<projeto>/main`) **não** é
+  protegida: confirme com o usuário antes de removê-la. Antes de `--force`,
+  mostre o que será perdido (o erro traz `git status --short`) e peça
+  confirmação.
 
 ## Regras de segurança (nunca violar)
 
-- Nunca rode `clone` nem `new` sem antes confirmar a pasta com o usuário,
-  a menos que ele tenha deixado claro que é para criar na pasta atual.
-- Nunca commite nem faça push de arquivos ao criar uma branch ou worktree,
-  a menos que o usuário peça isso explicitamente.
-- Nunca faça `git commit`, `git push`, ou `git checkout <branch>` dentro do
-  worktree de validação — o HEAD detached e o estado "resetado" são
-  propositais, não um bug a corrigir.
-- Nunca edite refs manualmente, rode `git reset` fora dos scripts, ou tente
-  "consertar" o worktree na mão.
-- Se um script falhar (branch não encontrada, base ambígua, worktree já
-  existente e travado), reporte o erro ao usuário em vez de tentar
-  contornar com comandos Git manuais.
-- Nunca rebaseie, force push, apague branch ou passe `--force` ou
-  `--confirmo-riscos` (nos scripts `prepare`, `cleanup`, `manage-worktree
-  remove` e `manage-worktree bootstrap-bare`) por iniciativa própria.
-  Essas recusas dos scripts são proteções, não obstáculos a driblar: leve
-  a decisão ao usuário.
-- `bootstrap-bare` reestrutura a raiz do projeto (move `.git` para `.bare` e
-  os arquivos soltos para `.bootstrap-old.*`; os ignorados pelo `.gitignore`
-  vão para a worktree nova). Rodar sem `--confirmo-riscos` só mostra o
-  aviso (código 3) — mostre-o ao usuário por inteiro e só passe a flag
-  depois que ele confirmar explicitamente, mesmo com a árvore limpa.
-
-## Pré-requisitos
-
-- `git` >= 2.17 (`git worktree remove`; worktrees em si existem desde a 2.5).
-- `gh` (GitHub CLI), autenticado, para detecção automática da branch base e
-  busca de PRs por descrição em linguagem natural. Sem ele, sempre passe
-  `--base` explicitamente.
-
-## Referência rápida dos scripts
-
-- `scripts/manage-worktree.sh clone|bootstrap-bare|new|list|update|remove`
-  — ciclo de vida das worktrees de desenvolvimento. `clone` clona um
-  repositório já no padrão bare + worktree por branch; `bootstrap-bare`
-  converte um repositório existente (checkout direto na raiz) para esse
-  mesmo padrão; `new` cria branch e worktree a partir de uma base
-  atualizada; `list` separa a entrada bare, o desenvolvimento e a
-  validação de PR; `update` faz fast-forward e recusa divergência;
-  `remove` protege trabalho não salvo e preserva a branch.
-
-- `scripts/prepare-pr-validation.sh <feature-branch> [--base <branch>] [--force]`
-  — cria/recria (protegendo edições do usuário) o worktree isolado, faz fetch, detecta a base, calcula o
-  merge-base, reseta (mixed) em HEAD detached, gera o `CLAUDE.md` de
-  contexto na raiz do worktree e imprime o caminho. Não abre editor algum.
-- `scripts/cleanup-pr-validation.sh [<feature-branch> | --all] [--force]` —
-  valida o caminho, protege edições do usuário, remove o worktree, roda `git worktree prune` e limpa o registro interno
-  (`.git/pr-validation/` no repositório principal).
-- `scripts/lib-pr-validation.sh` — funções compartilhadas (registro e
-  detecção de edições); é lido com `source`, não é chamado direto.
-- `tests/run-tests.sh` — testes de segurança do prepare/cleanup (repositório
-  comum e layout bare) e, ao final, do `manage-worktree.sh`
-  (`tests/manage-worktree-tests.sh`, que também roda sozinho), em repos
-  temporários. Rode `bash tests/run-tests.sh` após alterar os scripts.
+- Não rode `clone` nem `new` sem confirmar a pasta (salvo o pedido explícito
+  de criar na pasta atual).
+- Não commite, faça push, rebase, force push nem apague branch sem o usuário
+  pedir.
+- Não passe `--force` nem `--confirmo-riscos` por iniciativa própria. As
+  recusas dos scripts são proteções, não obstáculos: leve a decisão ao
+  usuário.
+- Não edite refs, não rode `git reset` fora dos scripts e não conserte uma
+  worktree na mão. Se um script falhar, reporte o erro em vez de contornar
+  com comandos Git manuais.

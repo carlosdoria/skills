@@ -122,48 +122,23 @@ git -C "$WORKTREE_PATH" reset "$MERGE_BASE"
 
 echo "==> Gerando CLAUDE.md com o contexto deste worktree..."
 cat > "$WORKTREE_PATH/CLAUDE.md" <<EOF
-# Ambiente de validação de PR — contexto para o Claude
+# Worktree de validação de PR (temporário e descartável)
 
-Este diretório é um **worktree Git temporário e descartável**, criado apenas
-para revisar, executar e testar um Pull Request. Não é o ambiente de
-desenvolvimento normal do usuário.
+Serve só para revisar, rodar e testar um PR. O estado do Git é
+intencional — não "corrija":
 
-## Estado do Git (intencional — não "corrigir")
+- \`HEAD\` **detached** e índice resetado até o merge-base: \`git status\`
+  mostra todo o PR como alteração não commitada.
+- PR: ${FEATURE_BRANCH} · base: ${BASE_BRANCH} · merge-base: ${MERGE_BASE}
+- \`CLAUDE.md\` e \`PR-REVIEW.md\` na raiz são desta ferramenta, não do PR.
 
-- \`HEAD\` está **detached** de propósito.
-- O índice foi resetado até o merge-base entre a branch do PR e a base, então
-  o painel de alterações do editor / \`git status\` mostra TODAS as alterações
-  do PR como não commitadas. Isso é esperado, não é um erro, e não deve ser
-  "corrigido" com \`git commit\`, \`git add\` ou reanexando a uma branch.
-
-- Branch do PR: ${FEATURE_BRANCH}
-- Branch base: ${BASE_BRANCH}
-- Merge-base (ponto de partida real do diff): ${MERGE_BASE}
-
-> \`CLAUDE.md\` e \`PR-REVIEW.md\` na raiz são artefatos desta ferramenta e
-> aparecem como arquivos não rastreados. **Não fazem parte do PR** e devem
-> ser ignorados na revisão.
-
-## O que você PODE fazer aqui
-
-- Ler e analisar qualquer arquivo para revisão de código.
-- Executar a aplicação e a suíte de testes normalmente.
-- Comparar com a base a qualquer momento: \`git diff ${MERGE_BASE}\`
-- Resumir o que o PR muda, apontar riscos, sugerir melhorias.
-
-## O que você NÃO deve fazer aqui
-
-- Não faça \`git commit\`, \`git push\`, \`git checkout <branch>\`, nem tente
-  reanexar o HEAD a uma branch.
-- Não tente mesclar, rebasear ou alterar a branch original a partir daqui —
-  este worktree não tem relação de escrita com ela.
-- Não rode o cleanup a partir de dentro desta pasta: o comando apaga este
-  diretório. Ele deve ser executado do repositório principal (${REPO_ROOT})
-  ou de outra worktree, nunca daqui.
+Pode ler, rodar a aplicação e os testes, e comparar com \`git diff ${MERGE_BASE}\`.
+Não faça \`git commit\`, \`git add\`, \`git push\`, \`git checkout <branch>\`,
+merge nem rebase aqui.
 
 ## Ao terminar a revisão
 
-No terminal do repositório principal, não aqui:
+No repositório principal (${REPO_ROOT}), nunca daqui — o cleanup apaga esta pasta:
 
     ${CLEANUP_CMD} "${FEATURE_BRANCH}"
 EOF

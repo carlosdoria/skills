@@ -90,50 +90,70 @@ if [[ "$MERGE_BASE" == "$PR_HEAD" ]]; then
   exit 0
 fi
 
-WORKTREE_PATH="$(g rev-parse --show-toplevel)"
-
+# Limites da saída: o que passa disso vira uma linha de contagem.
+LIMITE_COMMITS=30
+LIMITE_ARQUIVOS=50
 
 echo "=== META ==="
 echo "base_branch: $BASE_BRANCH"
 echo "feature_branch: $FEATURE_BRANCH"
 echo "merge_base: $MERGE_BASE"
 echo "pr_head: $PR_HEAD"
-echo "repo: $WORKTREE_PATH"
-echo "gerado_em: $(date '+%Y-%m-%d %H:%M')"
-
-echo
-echo "=== AUTORES ==="
-g log --format='%an' "${MERGE_BASE}..${PR_HEAD}" | sort | uniq -c | sort -rn
 
 echo
 echo "=== COMMITS ==="
-g log --format='%h %s' "${MERGE_BASE}..${PR_HEAD}"
+g log --format='%h %s' -n "$LIMITE_COMMITS" "${MERGE_BASE}..${PR_HEAD}"
+N_COMMITS="$(g rev-list --count "${MERGE_BASE}..${PR_HEAD}")"
+if (( N_COMMITS > LIMITE_COMMITS )); then
+  echo "(mais $((N_COMMITS - LIMITE_COMMITS)) commits mais antigos)"
+fi
 
 echo
 echo "=== TOTAIS ==="
 g diff --shortstat "$MERGE_BASE" "$PR_HEAD"
 
 echo
-echo "=== ARQUIVOS (status<TAB>adicoes<TAB>remocoes<TAB>caminho) ==="
+echo "=== ARQUIVOS (status<TAB>adicoes<TAB>remocoes<TAB>caminho, do mais alterado ao menos) ==="
 # Junta name-status (A/M/D/R) com numstat (+/-) numa linha só por arquivo.
+# Binários e lockfiles saem da lista e viram uma linha de contagem cada.
 TMP_DIR="$(mktemp -d "${TMPDIR:-/tmp}/pr-facts.XXXXXX")"
 trap 'rm -rf "$TMP_DIR"' EXIT
 g diff --name-status -M "$MERGE_BASE" "$PR_HEAD" > "$TMP_DIR/status" || true
 g diff --numstat   -M "$MERGE_BASE" "$PR_HEAD" > "$TMP_DIR/numstat" || true
-awk -F'\t' '
+: > "$TMP_DIR/texto"; : > "$TMP_DIR/binarios"; : > "$TMP_DIR/lockfiles"
+awk -F'\t' -v dir="$TMP_DIR" '
   NR==FNR { st[$NF]=$1; next }
-  { path=$NF; printf "%s\t%s\t%s\t%s\n", (st[path]?st[path]:"?"), $1, $2, path }
+  {
+    path=$NF
+    if ($1 == "-") { print path > (dir "/binarios"); next }
+    if (path ~ /(^|\/)(package-lock\.json|pnpm-lock\.yaml|bun\.lockb|go\.sum)$|\.lock$/) {
+      print path > (dir "/lockfiles"); next
+    }
+    printf "%d\t%s\t%s\t%s\t%s\n", $1+$2, (st[path]?st[path]:"?"), $1, $2, path > (dir "/texto")
+  }
 ' "$TMP_DIR/status" "$TMP_DIR/numstat"
-
-echo
-echo "=== ARQUIVOS MAIS ALTERADOS (top 10 por linhas tocadas) ==="
-g diff --numstat -M "$MERGE_BASE" "$PR_HEAD" \
-  | awk -F'\t' '$1 ~ /^[0-9]+$/ { print $1+$2 "\t" $3 }' \
-  | sort -rn | head -10
+# awk em vez de head: head fecharia o pipe antes do sort terminar (pipefail).
+sort -t$'\t' -k1,1nr "$TMP_DIR/texto" | awk -v n="$LIMITE_ARQUIVOS" 'NR <= n' | cut -f2-
+N_TEXTO="$(wc -l < "$TMP_DIR/texto" | tr -d ' ')"
+if (( N_TEXTO > LIMITE_ARQUIVOS )); then
+  echo "(mais $((N_TEXTO - LIMITE_ARQUIVOS)) arquivos com menos linhas alteradas: git diff --numstat $MERGE_BASE $PR_HEAD)"
+fi
+if [[ -s "$TMP_DIR/binarios" ]]; then
+  PASTAS="$(awk '{ n = split($0, p, "/"); print (n > 1 ? substr($0, 1, length($0) - length(p[n]) - 1) : ".") }' \
+    "$TMP_DIR/binarios" | sort -u | awk 'NR <= 5' | paste -sd, - | sed 's/,/, /g')"
+  echo "binarios: $(wc -l < "$TMP_DIR/binarios" | tr -d ' ') (em: $PASTAS)"
+fi
+if [[ -s "$TMP_DIR/lockfiles" ]]; then
+  echo "lockfiles: $(paste -sd, - < "$TMP_DIR/lockfiles" | sed 's/,/, /g')"
+fi
 
 echo
 echo "=== SINALIZADORES (arquivos sensiveis tocados) ==="
 g diff --name-only -M "$MERGE_BASE" "$PR_HEAD" | while IFS= read -r f; do
+  # Regras do projeto: o relatório só relê esses arquivos quando mudam no diff.
+  case "$f" in
+    CLAUDE.md|*/CLAUDE.md|AGENTS.md|*/AGENTS.md|docs/rules/*) echo "regras_do_projeto: $f" ;;
+  esac
   # Tipo do arquivo: um só, do mais específico para o mais genérico, então
   # lockfile/CI precisam vir antes de configuração (*.yml, *.yaml).
   case "$f" in
@@ -169,13 +189,23 @@ echo
 echo "=== TESTES NO DIFF ==="
 ALL="$(g diff --name-only -M "$MERGE_BASE" "$PR_HEAD")"
 TESTS="$(printf '%s\n' "$ALL" | grep -Ei '(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[jt]sx?$|_test\.(py|go|rb)$|Test\.(java|php|cs)$' || true)"
-SRC="$(printf '%s\n' "$ALL" \
+# Código apagado não pede teste.
+VIVOS="$(g diff --name-only --diff-filter=d -M "$MERGE_BASE" "$PR_HEAD")"
+SRC="$(printf '%s\n' "$VIVOS" \
   | grep -Ei '\.(js|jsx|ts|tsx|py|go|rb|java|php|cs|kt|swift|rs|vue|svelte)$' || true)"
 SRC_NAO_TESTE="$(comm -23 <(printf '%s\n' "$SRC" | sort -u) <(printf '%s\n' "$TESTS" | sort -u))"
 
-echo "arquivos_de_teste_no_diff:"
-printf '%s\n' "$TESTS" | sed '/^$/d' | sed 's/^/  /' || true
-echo "arquivos_de_codigo_sem_teste_homonimo_no_diff:"
+# Sem nenhum teste no diff, listar o código repetiria a seção ARQUIVOS inteira.
+if [[ -z "$TESTS" ]]; then
+  echo "arquivos_de_teste_no_diff: nenhum (todo código alterado está sem teste no diff)"
+  N_SRC="$(printf '%s\n' "$SRC" | sed '/^$/d' | wc -l | tr -d ' ')"
+  echo "arquivos_de_codigo_alterados: $N_SRC"
+  SRC_NAO_TESTE=""
+else
+  echo "arquivos_de_teste_no_diff:"
+  printf '%s\n' "$TESTS" | sed 's/^/  /'
+  echo "arquivos_de_codigo_sem_teste_homonimo_no_diff:"
+fi
 while IFS= read -r f; do
   [[ -n "$f" ]] || continue
   stem="$(basename "$f")"; stem="${stem%.*}"
