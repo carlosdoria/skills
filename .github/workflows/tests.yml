@@ -20,7 +20,7 @@ jobs:
       - name: Sintaxe (bash -n)
         run: |
           set -e
-          for f in install.sh tests/*.sh */scripts/*.sh */tests/*.sh; do
+          for f in install.sh tests/*.sh skills/*/scripts/*.sh skills/*/tests/*.sh; do
             echo "bash -n $f"
             bash -n "$f"
           done
@@ -32,13 +32,13 @@ jobs:
         run: bash tests/test-install.sh
 
       - name: branch-diff-report
-        run: bash branch-diff-report/tests/run-tests.sh
+        run: bash skills/branch-diff-report/tests/run-tests.sh
 
       - name: pr-worktree
-        run: bash pr-worktree/tests/run-tests.sh
+        run: bash skills/pr-worktree/tests/run-tests.sh
 
       - name: plan-and-execute
-        run: bash plan-and-execute/tests/run-tests.sh
+        run: bash skills/plan-and-execute/tests/run-tests.sh
 
   shellcheck:
     name: shellcheck
@@ -46,4 +46,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning install.sh tests/*.sh */scripts/*.sh */tests/*.sh
+        run: shellcheck -S warning install.sh tests/*.sh skills/*/scripts/*.sh skills/*/tests/*.sh

@@ -2,7 +2,7 @@
 #
 # install.sh [--copy] [--help]
 #
-# Instala as skills deste repositório (toda pasta com um SKILL.md na raiz) em
+# Instala as skills deste repositório (toda pasta em skills/ com um SKILL.md) em
 # ~/.claude/skills.
 #
 #   padrão   cria um link simbólico por skill apontando para este checkout:
@@ -36,7 +36,7 @@ if [[ -n "$SELF" && -f "$SELF" ]]; then
 fi
 
 # Sem checkout ao lado do script (curl | bash): clona ou atualiza um.
-if [[ -z "$REPO_DIR" ]] || ! compgen -G "$REPO_DIR/*/SKILL.md" >/dev/null; then
+if [[ -z "$REPO_DIR" ]] || ! compgen -G "$REPO_DIR/skills/*/SKILL.md" >/dev/null; then
   SRC="${CLAUDE_SKILLS_SRC:-$HOME/.claude/skills-src}"
   URL="${SKILLS_REPO_URL:-https://github.com/carlosdoria/skills.git}"
   if [[ -d "$SRC/.git" ]]; then
@@ -54,7 +54,7 @@ BACKUP_DIR="$SKILLS_DIR/.backup"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 INSTALADAS=0
 
-for skill_file in "$REPO_DIR"/*/SKILL.md; do
+for skill_file in "$REPO_DIR"/skills/*/SKILL.md; do
   [[ -f "$skill_file" ]] || continue
   skill_dir="$(dirname "$skill_file")"
   name="$(basename "$skill_dir")"
@@ -81,7 +81,7 @@ for skill_file in "$REPO_DIR"/*/SKILL.md; do
 done
 
 if [[ "$INSTALADAS" -eq 0 ]]; then
-  echo "Nenhuma skill encontrada em '$REPO_DIR' (esperava */SKILL.md)." >&2
+  echo "Nenhuma skill encontrada em '$REPO_DIR' (esperava skills/*/SKILL.md)." >&2
   exit 1
 fi
 

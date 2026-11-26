@@ -6,9 +6,9 @@ Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 
 | Skill | Descrição |
 | --- | --- |
-| [`branch-diff-report`](branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão a partir do diff. |
-| [`plan-and-execute`](plan-and-execute/SKILL.md) | Processo operacional para tarefas não triviais: entender, desenhar com aprovação, planejar, executar e verificar com evidência. |
-| [`pr-worktree`](pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
+| [`branch-diff-report`](skills/branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão a partir do diff. |
+| [`plan-and-execute`](skills/plan-and-execute/SKILL.md) | Processo operacional para tarefas não triviais: entender, desenhar com aprovação, planejar, executar e verificar com evidência. |
+| [`pr-worktree`](skills/pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
 
 ## Instalação
 
@@ -37,6 +37,10 @@ repositório que os links apontam: `git pull` (ou `update` da worktree `main`).
 Não é preciso rodar o instalador de novo. Se instalou via `curl | bash`, rodar
 o comando de novo faz o `git pull` em `~/.claude/skills-src`.
 
+Instalou antes de as skills irem para a pasta `skills/`? Rode o `install.sh`
+uma vez depois de atualizar: os links antigos apontam para a raiz do
+repositório, onde as skills não ficam mais, e o instalador os troca.
+
 `./install.sh --copy` copia as pastas em vez de linkar; nesse modo a skill
 instalada **não** acompanha o repositório e precisa ser reinstalada a cada
 mudança. Uma pasta já existente em `~/.claude/skills` é guardada em
@@ -50,21 +54,25 @@ para ela. Depois do merge, rode de novo a partir da `main`.
 ## Estrutura
 
 ```text
-skills/
-├── branch-diff-report/
-│   ├── SKILL.md
-│   ├── references/
-│   ├── scripts/
-│   ├── templates/
-│   └── tests/
-├── plan-and-execute/
-│   ├── SKILL.md
-│   └── tests/
-└── pr-worktree/
-    ├── SKILL.md
-    ├── references/
-    ├── scripts/
-    └── tests/
+.
+├── skills/
+│   ├── branch-diff-report/
+│   │   ├── SKILL.md
+│   │   ├── references/
+│   │   ├── scripts/
+│   │   ├── templates/
+│   │   └── tests/
+│   ├── plan-and-execute/
+│   │   ├── SKILL.md
+│   │   └── tests/
+│   └── pr-worktree/
+│       ├── SKILL.md
+│       ├── references/
+│       ├── scripts/
+│       └── tests/
+├── tests/              testes do install.sh
+├── install.sh
+└── .github/workflows/  CI
 ```
 
 O `SKILL.md` fica com o que todo uso precisa; o que só alguns pedidos usam
@@ -82,7 +90,7 @@ ele, as skills pedem as branches ao usuário.
 
 ## Testes e CI
 
-Cada skill tem seus testes em `<skill>/tests/run-tests.sh`, em repositórios
+Cada skill tem seus testes em `skills/<skill>/tests/run-tests.sh`, em repositórios
 temporários; rode-os depois de alterar os scripts:
 
 - `branch-diff-report`: seções e limites da saída, sinalizadores, branch
