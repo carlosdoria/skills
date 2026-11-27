@@ -27,6 +27,7 @@ Skills de plugin aparecem como `plugin:skill` (ex.: `/anthropic-skills:pdf`). As
 | Criticar, auditar ou melhorar o visual de uma tela | `impeccable` | Sim (cuidado, ver abaixo) |
 | Respostas curtas, economizar tokens | `caveman` | Sim, com "be brief", "less tokens" |
 | Achar bugs no diff atual ou num PR | `code-review` | Sim |
+| Segunda opinião sobre um diff, em contexto limpo | subagent `skills:revisor` | Sim, pela descrição; ou peça "usa o revisor" |
 | Limpar/simplificar o código alterado (sem caçar bug) | `simplify` | Sim |
 | Revisão de segurança da branch | `security-review` | Manual |
 | Criar um `CLAUDE.md` para um projeto | `init` | Manual |
@@ -104,6 +105,24 @@ O código fica em `skills/<nome>/` neste repositório. O Claude Code lê direto 
 **Cuidados:**
 - Para antes de construir e pede aprovação do desenho e do plano. Em tarefa pequena, isso pode parecer cerimônia: chame a tarefa de trivial ou peça para executar direto.
 - Código-fonte: `skills/plan-and-execute/`.
+
+---
+
+## Subagent deste repositório: `skills:revisor`
+
+**O que faz:** revisa um diff ou uma branch num contexto separado, sem ter visto o código ser escrito, e devolve só o que pode quebrar: arquivo e linha, o cenário que falha e a correção, com cada achado marcado como confirmado ou possível. Ignora estilo.
+
+**Quando usar:** depois de uma mudança não trivial, antes de commitar ou abrir PR. O Claude pode chamá-lo sozinho pela descrição; para garantir, peça "usa o revisor" ou rode `claude --agent skills:revisor`.
+
+**Cuidados:** somente leitura. O Bash é só para ler o Git (`git diff`, `git log`). Sobrepõe em parte o `/code-review` embutido: o revisor é mais leve e roda na sua sessão.
+
+---
+
+## Hook deste repositório: confirmação de comandos destrutivos
+
+O plugin traz um hook `PreToolUse` (`hooks/confirmar-comandos.sh`) que, antes de qualquer comando Bash, procura `git push --force` (o `--force-with-lease` passa), push na `main`/`master`, `git reset --hard`, `git clean -f`, `git branch -D` e `rm` com `-r` e `-f`. Se achar, o Claude Code pede sua confirmação explícita, mesmo que o comando esteja liberado por regra ou a sessão esteja no modo auto. Numa sessão `claude -p`, sem ninguém para confirmar, o comando é recusado.
+
+Precisa do `jq`. Para mudar a lista, edite o script e os casos em `hooks/tests/run-tests.sh`.
 
 ---
 
@@ -218,6 +237,8 @@ Há um segundo pacote sincronizado em `~/.claude/skills/synced/` com outras skil
 ## O que roda sozinho e não é skill
 
 - **Hooks do `impeccable`** em `~/.claude/settings.json` (ver acima).
+- **Hook de confirmação do plugin `skills`:** pede confirmação antes de comandos destrutivos (ver acima).
+- **Statusline** (na CLI): pasta (branch), modelo, contexto usado e custo, de `statusline/statusline.sh`.
 - **Mod `prompt-rewriter`:** reescreve o prompt no envio quando o Auto está ligado.
 - **Padrões pessoais:** `~/.claude/CLAUDE.md` importa `claude/CLAUDE.md` deste repositório e vale em toda sessão, em qualquer projeto.
 - **Memória por projeto** em `~/.claude/projects/<projeto>/memory/`: carregada automaticamente em toda sessão daquele projeto.
