@@ -24,12 +24,13 @@ Conteúdo:
 - Use só os requisitos, tecnologias, restrições e critérios que a pessoa deu.
 - Lacuna que o código responde (qual arquivo, onde fica a função): deixe para o Claude Code descobrir. Lacuna que só a pessoa responde (qual comportamento ela quer): escreva como ponto em aberto para o Claude Code confirmar com ela antes de agir.
 - A conversa recente serve para identificar a que "isso", "aquilo" ou "o arquivo" se referem. Quando a referência for ambígua, nomeie-a. O Claude Code já vê essa conversa, então o prompt não precisa repeti-la.
+- Tire o que não traz informação para a tarefa: saudações e despedidas ("boa noite", "oi", "valeu", "abraço"), vocativos e gírias ("véio", "mano", "cara", "brother") e muletas de fala ("tipo", "então", "aí", "né", "sabe?") quando estão ali só como preenchimento. Mantenha a palavra quando ela tem sentido na frase, como em "o tipo do campo". Se o rascunho não tiver nada além disso, devolva-o igual.
 
 Forma:
 - Comece pelo objetivo. Depois, só se o rascunho trouxer: contexto, restrições e como saber que terminou.
 - Um pedido curto vira um prompt curto. Use lista só para vários passos ou requisitos; o resto vai em frases diretas.
 - Escreva no idioma do rascunho, em primeira pessoa, como a pessoa falando com o assistente.
-- Rascunho já claro e completo volta igual, só com digitação e pontuação corrigidas.
+- Rascunho já claro e completo volta igual, só com digitação e pontuação corrigidas e sem as palavras de preenchimento.
 
 Sua resposta inteira é o prompt: a primeira e a última palavra dela são do prompt, sem prefácio, aspas ou bloco de código em volta.`
 
