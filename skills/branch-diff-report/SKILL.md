@@ -1,6 +1,7 @@
 ---
 name: branch-diff-report
 description: Compara duas branches Git e gera um resumo em Markdown para a descrição do PR, com riscos por nível, problemas e melhorias. Somente leitura, em qualquer repositório. Use quando o usuário pedir para comparar duas branches, ver o que uma branch traz em relação à base, resumir, analisar ou revisar um PR ou um diff, ou escrever a descrição de um PR, mesmo sem dizer "relatório" ou "diff".
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/collect-branch-facts.sh *)
 ---
 
 # Branch Diff Report
@@ -35,7 +36,7 @@ apontar o diretório certo.
 ### 2. Colete os fatos
 
 ```bash
-bash scripts/collect-branch-facts.sh <base-branch> <feature-branch> [--dir <caminho>] [--no-fetch]
+bash ${CLAUDE_SKILL_DIR}/scripts/collect-branch-facts.sh <base-branch> <feature-branch> [--dir <caminho>] [--no-fetch]
 ```
 
 `--dir` aponta o repositório ou worktree (padrão: diretório atual);

@@ -1,6 +1,7 @@
 ---
 name: pr-worktree
 description: Gerencia worktrees Git no padrão bare + worktree por branch — clona um repositório já nesse formato, converte um existente, cria worktree com branch nova a partir de uma base ou de outra worktree, lista, atualiza e remove com segurança. Também prepara e limpa worktrees descartáveis para revisar, rodar e testar um PR localmente. Use quando o usuário pedir para clonar um repositório, criar, abrir, listar, atualizar ou remover uma worktree, branch ou pasta de trabalho, ou revisar, testar ou rodar um PR localmente, mesmo sem dizer "worktree".
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/manage-worktree.sh list *) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/manage-worktree.sh update *)
 ---
 
 # PR Worktree
@@ -30,8 +31,9 @@ decisão a ele.
 | Revisar, validar, testar ou rodar um PR; limpar essa validação | `references/validacao-pr.md` |
 | Criar, listar, atualizar ou remover worktree de desenvolvimento | só este arquivo |
 
-Os caminhos `scripts/...` são relativos à pasta desta skill, também nas
-referências.
+Os scripts ficam em `${CLAUDE_SKILL_DIR}/scripts/`. Nas referências,
+`scripts/...` é relativo a essa mesma pasta. Só `list` e `update` rodam
+sem pedir permissão; os outros subcomandos passam pelo pedido normal.
 
 ## Padrão: repositório bare + worktree por branch
 
@@ -72,7 +74,7 @@ usuário já indicou), nem o worktree de validação de PR (caminho fixo, sem
 
 ## Worktrees de desenvolvimento
 
-Todos os subcomandos: `bash scripts/manage-worktree.sh <subcomando> [args]`.
+Todos os subcomandos: `bash ${CLAUDE_SKILL_DIR}/scripts/manage-worktree.sh <subcomando> [args]`.
 
 - **Criar:** `new <nova-branch> [--from <base>] [--dir <caminho>]`.
   `--from` aceita o caminho de outra worktree ou um nome de branch; a base é

@@ -11,6 +11,18 @@ O guia de uso do dia a dia está em [`docs/GUIA-SKILLS.md`](docs/GUIA-SKILLS.md)
 | [`plan-and-execute`](skills/plan-and-execute/SKILL.md) | Processo operacional para tarefas não triviais: entender, desenhar com aprovação, planejar, executar e verificar com evidência. |
 | [`pr-worktree`](skills/pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
 
+## Outros componentes do plugin
+
+| Componente | Descrição |
+| --- | --- |
+| [`agents/revisor.md`](agents/revisor.md) | Subagent `skills:revisor`: revisa um diff ou uma branch em contexto limpo, somente leitura, e aponta bugs e riscos com arquivo e linha. |
+| [`hooks/confirmar-comandos.sh`](hooks/confirmar-comandos.sh) | Hook `PreToolUse` no Bash que exige confirmação explícita antes de `git push --force`, push na `main`/`master`, `git reset --hard`, `git clean -f`, `git branch -D` e `rm -rf`, mesmo com o comando liberado por regra ou no modo auto. |
+| [`statusline/statusline.sh`](statusline/statusline.sh) | Statusline com pasta (branch), modelo, contexto usado e custo da sessão. Não faz parte do plugin: é configurada no `settings.json` (ver abaixo). |
+
+As skills `branch-diff-report` e `pr-worktree` pré-aprovam os próprios
+scripts com `allowed-tools`. Na `pr-worktree`, só `list` e `update` rodam
+sem pedir permissão.
+
 ## Mods disponíveis
 
 | Mod | Descrição |
@@ -79,6 +91,22 @@ sobrescrever. O que valer só para uma máquina pode ficar abaixo dela, fora do
 repositório. Lembre que este repositório é público: nada de cliente ou empresa
 nesse arquivo.
 
+### Statusline
+
+Precisa do `jq` (já vem no macOS 15 ou mais novo). Em `~/.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/repos/labs/skills/main/statusline/statusline.sh"
+  }
+}
+```
+
+Ela roda localmente e não gasta tokens. Aparece na CLI, inclusive no
+Maestri. No app desktop e na extensão do VS Code, não conferido.
+
 ### Atualizar
 
 `git pull` no checkout para o qual a variável aponta e uma nova sessão. Skills
@@ -119,6 +147,14 @@ Para testar o mod de uma branch, aponte para a pasta dele:
 │       ├── references/
 │       ├── scripts/
 │       └── tests/
+├── agents/
+│   └── revisor.md      subagent skills:revisor
+├── hooks/
+│   ├── hooks.json      hooks do plugin de skills
+│   ├── confirmar-comandos.sh
+│   └── tests/
+├── statusline/
+│   └── statusline.sh
 ├── mods/
 │   └── prompt-rewriter/
 │       ├── .claude-plugin/plugin.json
@@ -158,16 +194,20 @@ temporários; rode-os depois de alterar os scripts:
   bare) e o `manage-worktree.sh` (`tests/manage-worktree-tests.sh`, que
   também roda sozinho).
 
+- `hooks/tests/run-tests.sh`: o que o hook de confirmação pega e o que deixa
+  passar.
+
 Os testes do mod rodam com `claude plugin test mods/prompt-rewriter` e
 precisam do Claude Code instalado, por isso ficam fora do CI.
 
 O workflow `.github/workflows/tests.yml` roda tudo em
 cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
-`shellcheck` (`-S warning`) também precisa passar.
+`shellcheck` (`-S warning`) também precisa passar, e o job `plugins` instala
+o Claude Code e roda `claude plugin validate` nos dois plugins.
 
 Para exigir que o PR só entre com os testes verdes, ative em *Settings ›
 Branches* uma regra de proteção para `main` com os checks `tests (macos-latest)`,
-`tests (ubuntu-latest)` e `shellcheck` como obrigatórios.
+`tests (ubuntu-latest)`, `shellcheck` e `plugins` como obrigatórios.
 
 ## Melhorias futuras
 

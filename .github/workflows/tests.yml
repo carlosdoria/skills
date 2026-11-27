@@ -20,7 +20,7 @@ jobs:
       - name: Sintaxe (bash -n)
         run: |
           set -e
-          for f in skills/*/scripts/*.sh skills/*/tests/*.sh; do
+          for f in skills/*/scripts/*.sh skills/*/tests/*.sh hooks/*.sh hooks/tests/*.sh statusline/*.sh; do
             echo "bash -n $f"
             bash -n "$f"
           done
@@ -40,10 +40,29 @@ jobs:
       - name: plan-and-execute
         run: bash skills/plan-and-execute/tests/run-tests.sh
 
+      - name: hook confirmar-comandos
+        run: bash hooks/tests/run-tests.sh
+
   shellcheck:
     name: shellcheck
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning skills/*/scripts/*.sh skills/*/tests/*.sh
+        run: shellcheck -S warning skills/*/scripts/*.sh skills/*/tests/*.sh hooks/*.sh hooks/tests/*.sh statusline/*.sh
+
+  plugins:
+    name: plugins
+    # Valida manifesto, skills, agents e hooks dos dois plugins com a própria CLI do Claude Code.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Instalar o Claude Code
+        run: npm install -g @anthropic-ai/claude-code && claude --version
+      - name: Validar o plugin skills
+        run: claude plugin validate .
+      - name: Validar o mod prompt-rewriter
+        run: claude plugin validate mods/prompt-rewriter
