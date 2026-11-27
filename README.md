@@ -12,44 +12,59 @@ Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 
 ## Instalação
 
+O repositório é um plugin do Claude Code chamado `skills`
+(`.claude-plugin/plugin.json`). Por isso as skills aparecem com o prefixo do
+plugin: `/skills:pr-worktree`, `/skills:branch-diff-report` e
+`/skills:plan-and-execute`. Requer Claude Code 2.1.280 ou mais novo.
+
+1. Clone o repositório. No padrão bare + worktree por branch, o plugin é a
+   worktree `main`:
+
+   ```bash
+   git clone git@github.com:carlosdoria/skills.git
+   ```
+
+2. Em `~/.claude/settings.json`, aponte a variável `CLAUDE_CODE_PLUGIN_DIRS`
+   para o checkout. Vários caminhos ficam separados por `:`, e o `~` no início
+   é aceito:
+
+   ```json
+   {
+     "env": {
+       "CLAUDE_CODE_PLUGIN_DIRS": "~/repos/labs/skills/main"
+     }
+   }
+   ```
+
+3. Abra uma nova sessão do Claude Code. A variável vale no app desktop, na
+   extensão do VS Code e no terminal.
+
+Instalou antes com o antigo `install.sh`? Apague os links que ele criou ao
+mesmo tempo em que adiciona a variável, senão cada skill aparece duas vezes:
+
 ```bash
-curl -fsSL https://raw.githubusercontent.com/carlosdoria/skills/main/install.sh | bash
+rm ~/.claude/skills/branch-diff-report ~/.claude/skills/plan-and-execute ~/.claude/skills/pr-worktree
 ```
 
-Isso clona o repositório em `~/.claude/skills-src` e cria, em
-`~/.claude/skills/`, um link simbólico por skill apontando para ele.
-
-Alternativa clonando o repositório você mesmo:
-
-```bash
-git clone git@github.com:carlosdoria/skills.git && cd skills && ./install.sh
-```
-
-Os links apontam para esse checkout. Se ele for um projeto bare + worktree por
-branch, rode o `install.sh` a partir da worktree `main`.
-
-Abra uma nova sessão do Claude Code para que sejam carregadas.
+Se instalou via `curl | bash`, apague também o clone em `~/.claude/skills-src`.
 
 ### Atualizar
 
-Com a instalação por link (padrão), atualizar a skill é atualizar o
-repositório que os links apontam: `git pull` (ou `update` da worktree `main`).
-Não é preciso rodar o instalador de novo. Se instalou via `curl | bash`, rodar
-o comando de novo faz o `git pull` em `~/.claude/skills-src`.
-
-Instalou antes de as skills irem para a pasta `skills/`? Rode o `install.sh`
-uma vez depois de atualizar: os links antigos apontam para a raiz do
-repositório, onde as skills não ficam mais, e o instalador os troca.
-
-`./install.sh --copy` copia as pastas em vez de linkar; nesse modo a skill
-instalada **não** acompanha o repositório e precisa ser reinstalada a cada
-mudança. Uma pasta já existente em `~/.claude/skills` é guardada em
-`~/.claude/skills/.backup/`, não apagada.
+`git pull` no checkout para o qual a variável aponta e uma nova sessão. Skills
+novas, alteradas ou removidas acompanham o repositório sem outro passo.
 
 ### Testar uma branch antes do merge
 
-Rode `./install.sh` a partir da worktree da branch: os links passam a apontar
-para ela. Depois do merge, rode de novo a partir da `main`.
+Abra o Claude no terminal apontando para a worktree da branch:
+
+```bash
+claude --plugin-dir ~/repos/labs/skills/<worktree>
+```
+
+A sessão carrega também o plugin da variável, com o mesmo nome, mas as skills
+vêm da branch: o `--plugin-dir` prevalece (conferido no Claude Code 2.1.332).
+O app desktop e a extensão do VS Code não aceitam essa opção e sempre usam o
+checkout da variável.
 
 ## Estrutura
 
@@ -70,8 +85,8 @@ para ela. Depois do merge, rode de novo a partir da `main`.
 │       ├── references/
 │       ├── scripts/
 │       └── tests/
-├── tests/              testes do install.sh
-├── install.sh
+├── .claude-plugin/
+│   └── plugin.json     manifesto do plugin
 └── .github/workflows/  CI
 ```
 
@@ -99,7 +114,7 @@ temporários; rode-os depois de alterar os scripts:
   bare) e o `manage-worktree.sh` (`tests/manage-worktree-tests.sh`, que
   também roda sozinho).
 
-O instalador tem `tests/test-install.sh`. O workflow `.github/workflows/tests.yml` roda tudo em
+O workflow `.github/workflows/tests.yml` roda tudo em
 cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
 `shellcheck` (`-S warning`) também precisa passar.
 

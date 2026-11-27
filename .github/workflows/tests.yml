@@ -20,7 +20,7 @@ jobs:
       - name: Sintaxe (bash -n)
         run: |
           set -e
-          for f in install.sh tests/*.sh skills/*/scripts/*.sh skills/*/tests/*.sh; do
+          for f in skills/*/scripts/*.sh skills/*/tests/*.sh; do
             echo "bash -n $f"
             bash -n "$f"
           done
@@ -28,8 +28,8 @@ jobs:
       - name: Versões
         run: bash --version | head -1 && git --version
 
-      - name: install.sh
-        run: bash tests/test-install.sh
+      - name: Manifesto do plugin
+        run: python3 -c "import json; m = json.load(open('.claude-plugin/plugin.json')); assert m['name'] == 'skills', m"
 
       - name: branch-diff-report
         run: bash skills/branch-diff-report/tests/run-tests.sh
@@ -46,4 +46,4 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: shellcheck
-        run: shellcheck -S warning install.sh tests/*.sh skills/*/scripts/*.sh skills/*/tests/*.sh
+        run: shellcheck -S warning skills/*/scripts/*.sh skills/*/tests/*.sh
