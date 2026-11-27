@@ -1,6 +1,7 @@
 # Claude Code Skills
 
-Coleção de skills para o [Claude Code](https://claude.com/claude-code).
+Coleção de skills e mods para o [Claude Code](https://claude.com/claude-code).
+O guia de uso do dia a dia está em [`docs/GUIA-SKILLS.md`](docs/GUIA-SKILLS.md).
 
 ## Skills disponíveis
 
@@ -9,6 +10,12 @@ Coleção de skills para o [Claude Code](https://claude.com/claude-code).
 | [`branch-diff-report`](skills/branch-diff-report/SKILL.md) | Compara duas branches e gera um relatório de revisão a partir do diff. |
 | [`plan-and-execute`](skills/plan-and-execute/SKILL.md) | Processo operacional para tarefas não triviais: entender, desenhar com aprovação, planejar, executar e verificar com evidência. |
 | [`pr-worktree`](skills/pr-worktree/SKILL.md) | Gerencia worktrees Git (bare + worktree por branch) e valida Pull Requests localmente. |
+
+## Mods disponíveis
+
+| Mod | Descrição |
+| --- | --- |
+| [`prompt-rewriter`](mods/prompt-rewriter/hooks/register.tsx) | Botão **Prompt** acima da caixa de texto que reescreve o rascunho antes de enviar, com modo Auto e Desfazer. |
 
 ## Instalação
 
@@ -31,10 +38,13 @@ plugin: `/skills:pr-worktree`, `/skills:branch-diff-report` e
    ```json
    {
      "env": {
-       "CLAUDE_CODE_PLUGIN_DIRS": "~/repos/labs/skills/main"
+       "CLAUDE_CODE_PLUGIN_DIRS": "~/repos/labs/skills/main:~/repos/labs/skills/main/mods/prompt-rewriter"
      }
    }
    ```
+
+   O primeiro caminho carrega as skills; o segundo, o mod. Cada mod é um
+   plugin à parte e precisa do próprio caminho: deixe de fora o que não quiser.
 
 3. Abra uma nova sessão do Claude Code. A variável vale no app desktop, na
    extensão do VS Code e no terminal.
@@ -47,6 +57,27 @@ rm ~/.claude/skills/branch-diff-report ~/.claude/skills/plan-and-execute ~/.clau
 ```
 
 Se instalou via `curl | bash`, apague também o clone em `~/.claude/skills-src`.
+
+### Padrões pessoais (`CLAUDE.md`)
+
+[`claude/CLAUDE.md`](claude/CLAUDE.md) guarda instruções que valem em todos os
+projetos, em todas as máquinas. O `~/.claude/CLAUDE.md` de cada máquina só
+importa esse arquivo, com uma linha:
+
+```text
+@~/repos/labs/skills/main/claude/CLAUDE.md
+```
+
+Para criar:
+
+```bash
+echo '@~/repos/labs/skills/main/claude/CLAUDE.md' > ~/.claude/CLAUDE.md
+```
+
+Se o `~/.claude/CLAUDE.md` já existir, acrescente a linha em vez de
+sobrescrever. O que valer só para uma máquina pode ficar abaixo dela, fora do
+repositório. Lembre que este repositório é público: nada de cliente ou empresa
+nesse arquivo.
 
 ### Atualizar
 
@@ -65,6 +96,9 @@ A sessão carrega também o plugin da variável, com o mesmo nome, mas as skills
 vêm da branch: o `--plugin-dir` prevalece (conferido no Claude Code 2.1.332).
 O app desktop e a extensão do VS Code não aceitam essa opção e sempre usam o
 checkout da variável.
+
+Para testar o mod de uma branch, aponte para a pasta dele:
+`claude --plugin-dir ~/repos/labs/skills/<worktree>/mods/prompt-rewriter`.
 
 ## Estrutura
 
@@ -85,8 +119,18 @@ checkout da variável.
 │       ├── references/
 │       ├── scripts/
 │       └── tests/
+├── mods/
+│   └── prompt-rewriter/
+│       ├── .claude-plugin/plugin.json
+│       ├── hooks/
+│       ├── tests/
+│       └── types/
+├── docs/
+│   └── GUIA-SKILLS.md  guia de uso
+├── claude/
+│   └── CLAUDE.md       padrões pessoais, importados pelo ~/.claude/CLAUDE.md
 ├── .claude-plugin/
-│   └── plugin.json     manifesto do plugin
+│   └── plugin.json     manifesto do plugin de skills
 └── .github/workflows/  CI
 ```
 
@@ -113,6 +157,9 @@ temporários; rode-os depois de alterar os scripts:
 - `pr-worktree`: segurança do prepare/cleanup (repositório comum e layout
   bare) e o `manage-worktree.sh` (`tests/manage-worktree-tests.sh`, que
   também roda sozinho).
+
+Os testes do mod rodam com `claude plugin test mods/prompt-rewriter` e
+precisam do Claude Code instalado, por isso ficam fora do CI.
 
 O workflow `.github/workflows/tests.yml` roda tudo em
 cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
