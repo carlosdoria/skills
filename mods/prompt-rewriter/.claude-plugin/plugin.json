@@ -1,0 +1,6 @@
+{
+  "name": "prompt-rewriter",
+  "version": "0.1.0",
+  "description": "Botão Prompt acima da caixa de texto que reescreve o rascunho com o Claude antes de enviar, com modo Auto e Desfazer",
+  "types": "./types/index.d.ts"
+}
