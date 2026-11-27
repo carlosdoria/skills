@@ -91,7 +91,8 @@ async function rewrite(
   return text === '' ? { error: 'resposta vazia' } : { text }
 }
 
-const isCommand = (text: string) => text.trimStart().startsWith('/')
+// Comando com / (do Claude Code) ou com ! (de terminal): vai como está, sem chamar o modelo.
+const isCommand = (text: string) => /^[/!]/.test(text.trimStart())
 
 // Botão "Prompt": reescreve o rascunho na própria caixa, para você revisar antes de enviar.
 async function rewriteDraft($: EngineInterface) {
@@ -104,7 +105,7 @@ async function rewriteDraft($: EngineInterface) {
     return
   }
   if (isCommand(draft)) {
-    $.ui.toast('Comandos com / não são reescritos.')
+    $.ui.toast('Comandos com / ou ! não são reescritos.')
     return
   }
 

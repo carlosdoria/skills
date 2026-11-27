@@ -156,3 +156,42 @@ test('no Auto, se o modelo falhar o prompt vai como foi escrito', async ($, on) 
   })
   expect(sent).toBe('cria testes pro serviço de checkout')
 })
+
+test('comandos com / ou ! não são reescritos, nem no botão nem no Auto', async ($, on) => {
+  let box = ''
+  let sent = ''
+  let toast = ''
+  let calls = 0
+
+  on('prompt.read', () => ({ value: { text: box, cursor: box.length } }))
+  on('store.get', () => ({ value: true }))
+  on('session.start', (_, e) => ({ cwd: e.cwd }))
+  on('ui.status', () => ({ value: undefined }))
+  on('ui.toast', (_, e) => {
+    toast = e.text
+    return { value: undefined }
+  })
+  on('model.complete', () => {
+    calls += 1
+    return { value: { isAnswered: true, text: 'reescrito', usage: USAGE } }
+  })
+  on('prompt.submit', (_, e) => {
+    sent = e.text
+    return { text: e.text }
+  })
+
+  const ui = await $.ui.mount({ ...BAND, surface: 'terminal' })
+  for (const command of ['!git status --short', '  !ls -la ~/repos', '/review o diff da branch atual']) {
+    box = command
+    toast = ''
+    await ui.press({ key: 'prompt' })
+    expect(toast).toContain('não são reescritos')
+  }
+  await ui.unmount()
+
+  await $.session.start({ cwd: '/', surface: 'terminal', isInteractive: true })
+  const person = { kind: 'composer' } as const
+  await $.prompt.submit({ text: '!npm run test -- --watch=false', wait: false, origin: person })
+  expect(sent).toBe('!npm run test -- --watch=false')
+  expect(calls).toBe(0)
+})

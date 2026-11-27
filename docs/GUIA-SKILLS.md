@@ -111,7 +111,7 @@ O código fica em `skills/<nome>/` neste repositório. O Claude Code lê direto 
 
 **O que faz:** põe uma faixa acima da caixa de texto com três botões:
 - **Prompt:** reescreve o rascunho da caixa com o Claude (`sonnet`), mais claro e sem inventar requisitos. Você revisa antes de enviar.
-- **Auto:** quando ligado, reescreve cada prompt no envio. Rascunhos com menos de 20 caracteres e comandos com `/` vão como estão. Se a reescrita falhar, o prompt vai como você escreveu. A escolha fica salva entre sessões.
+- **Auto:** quando ligado, reescreve cada prompt no envio. Rascunhos com menos de 20 caracteres e comandos com `/` ou `!` vão como estão. Se a reescrita falhar, o prompt vai como você escreveu. A escolha fica salva entre sessões.
 - **Desfazer:** volta ao rascunho de antes da última reescrita pelo botão.
 
 **Onde funciona:** app desktop e CLI no terminal (inclusive dentro do Maestri). Na extensão do VS Code, não conferido.
