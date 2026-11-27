@@ -58,6 +58,27 @@ rm ~/.claude/skills/branch-diff-report ~/.claude/skills/plan-and-execute ~/.clau
 
 Se instalou via `curl | bash`, apague também o clone em `~/.claude/skills-src`.
 
+### Padrões pessoais (`CLAUDE.md`)
+
+[`claude/CLAUDE.md`](claude/CLAUDE.md) guarda instruções que valem em todos os
+projetos, em todas as máquinas. O `~/.claude/CLAUDE.md` de cada máquina só
+importa esse arquivo, com uma linha:
+
+```text
+@~/repos/labs/skills/main/claude/CLAUDE.md
+```
+
+Para criar:
+
+```bash
+echo '@~/repos/labs/skills/main/claude/CLAUDE.md' > ~/.claude/CLAUDE.md
+```
+
+Se o `~/.claude/CLAUDE.md` já existir, acrescente a linha em vez de
+sobrescrever. O que valer só para uma máquina pode ficar abaixo dela, fora do
+repositório. Lembre que este repositório é público: nada de cliente ou empresa
+nesse arquivo.
+
 ### Atualizar
 
 `git pull` no checkout para o qual a variável aponta e uma nova sessão. Skills
@@ -106,6 +127,8 @@ Para testar o mod de uma branch, aponte para a pasta dele:
 │       └── types/
 ├── docs/
 │   └── GUIA-SKILLS.md  guia de uso
+├── claude/
+│   └── CLAUDE.md       padrões pessoais, importados pelo ~/.claude/CLAUDE.md
 ├── .claude-plugin/
 │   └── plugin.json     manifesto do plugin de skills
 └── .github/workflows/  CI

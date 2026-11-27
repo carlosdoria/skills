@@ -219,6 +219,7 @@ Há um segundo pacote sincronizado em `~/.claude/skills/synced/` com outras skil
 
 - **Hooks do `impeccable`** em `~/.claude/settings.json` (ver acima).
 - **Mod `prompt-rewriter`:** reescreve o prompt no envio quando o Auto está ligado.
+- **Padrões pessoais:** `~/.claude/CLAUDE.md` importa `claude/CLAUDE.md` deste repositório e vale em toda sessão, em qualquer projeto.
 - **Memória por projeto** em `~/.claude/projects/<projeto>/memory/`: carregada automaticamente em toda sessão daquele projeto.
 
 ## Dicas
