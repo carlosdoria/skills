@@ -213,3 +213,12 @@ Branches* uma regra de proteção para `main` com os checks `tests (macos-latest
 
 - [ ] Documentar processo de contribuição (`CONTRIBUTING.md`) para novas skills.
 - [ ] Adicionar versionamento/changelog das skills.
+- [ ] Distribuir o plugin de demandas pelo marketplace do Claude Code
+  (`/plugin marketplace add carlosdoria/skills` e `/plugin install demandas`),
+  para quem só quer usar instalar sem clonar o repositório. Inclui o
+  `.claude-plugin/marketplace.json`, a versão no `plugin.json` a cada
+  publicação e um README de instalação sem caminhos pessoais.
+
+## Licença
+
+[MIT](LICENSE).
