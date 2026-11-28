@@ -194,16 +194,16 @@ temporários; rode-os depois de alterar os scripts:
   bare) e o `manage-worktree.sh` (`tests/manage-worktree-tests.sh`, que
   também roda sozinho).
 
-- `hooks/tests/run-tests.sh`: o que o hook de confirmação pega e o que deixa
-  passar.
+O hook de confirmação tem os seus em `hooks/tests/run-tests.sh`: o que ele
+pega e o que deixa passar.
 
 Os testes do mod rodam com `claude plugin test mods/prompt-rewriter` e
 precisam do Claude Code instalado, por isso ficam fora do CI.
 
-O workflow `.github/workflows/tests.yml` roda tudo em
-cada PR e a cada push na `main`, no macOS (Bash 3.2) e no Ubuntu. O job de
-`shellcheck` (`-S warning`) também precisa passar, e o job `plugins` instala
-o Claude Code e roda `claude plugin validate` nos dois plugins.
+O workflow `.github/workflows/tests.yml` roda tudo em cada PR e a cada push na
+`main`, no macOS (Bash 3.2) e no Ubuntu. O job de `shellcheck` (`-S warning`)
+também precisa passar, e o job `plugins` instala o Claude Code e roda
+`claude plugin validate` nos dois plugins.
 
 Para exigir que o PR só entre com os testes verdes, ative em *Settings ›
 Branches* uma regra de proteção para `main` com os checks `tests (macos-latest)`,
