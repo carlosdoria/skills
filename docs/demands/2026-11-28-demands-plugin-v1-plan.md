@@ -681,6 +681,7 @@ Em todas as frentes: `docs/demands/` é só leitura, e o resto do repositório t
 - `.github/workflows/tests.yml`: security na onda 1; Maestro na onda 3.
 - `mods/demands/.claude-plugin/plugin.json`: só a frente mod.
 - `README.md`: só o Maestro, na onda 3.
+- `mods/demands/maestri/` (texto fonte do papel do Maestro) e `.maestri/roles/` (papel instalado no Maestri): só o Maestro. Como configurar: `docs/demands/maestri-setup.md`.
 
 ### Portas, permissões e riscos
 
